@@ -61,6 +61,7 @@ def append_row_to_excel(raw_excel, sheet_name, row_data):
     wb = openpyxl.load_workbook(io.BytesIO(raw_excel))
     if sheet_name not in wb.sheetnames:
         ws = wb.create_sheet(sheet_name)
+        if sheet_name == '지출': ws.append(['일자', '항목', '금액', '비고'])
     else:
         ws = wb[sheet_name]
     
@@ -161,15 +162,16 @@ def generate_summary_excel(df_income, df_target, raw_excel, start_year=2026):
 st.set_page_config(page_title="2026 선교헌금 관리", layout="wide")
 st.title("⛪ 2026 선교헌금 관리 시스템")
 
-# 세션 상태 초기화 (입력 모드 전환용)
-if 'add_mode' not in st.session_state:
-    st.session_state.add_mode = False
+# 세션 상태 초기화 (입력/조회 모드 전환용)
+for key in ['add_mode_tgt', 'add_mode_inc', 'add_mode_exp']:
+    if key not in st.session_state:
+        st.session_state[key] = False
 
 with st.spinner('데이터를 동기화하는 중입니다...'):
     df_income, df_target, df_expense, raw_excel = load_data(FILE_ID)
 
 if df_income is not None:
-    menu = st.sidebar.radio("메뉴", ["🔍 개인별 조회", "✍️ 데이터 입력", "📊 결산 및 통계", "🖨️ 인쇄용 집계표"])
+    menu = st.sidebar.radio("메뉴", ["🔍 개인별 조회", "✍️ 데이터 관리(입력/조회)", "📊 결산 및 통계", "🖨️ 인쇄용 집계표"])
 
     # ----------------------------------------------------------------
     if menu == "🔍 개인별 조회":
@@ -192,98 +194,67 @@ if df_income is not None:
                             st.write(f"{int(res['alloc'][m]):,}원")
                             
     # ----------------------------------------------------------------
-    elif menu == "✍️ 데이터 입력":
-        st.subheader("✍️ 내역 입력하기")
-        tab1, tab2, tab3 = st.tabs(["헌금 수입", "지출 내역", "작정액 관리"])
+    elif menu == "✍️ 데이터 관리(입력/조회)":
+        st.subheader("✍️ 내역 관리 및 입력")
+        tab1, tab2, tab3 = st.tabs(["헌금 수입 관리", "지출 내역 관리", "작정액 관리"])
         
+        # --- TAB 1: 헌금 수입 관리 ---
         with tab1:
-            with st.form("income_form"):
-                col1, col2 = st.columns(2)
-                inc_date = col1.date_input("입금일자")
-                inc_name = col2.text_input("성명")
-                inc_amt = col1.number_input("금액", min_value=0, step=10000)
-                inc_note = col2.text_input("비고 (선택)")
-                submitted1 = st.form_submit_button("헌금 수입 저장")
+            if not st.session_state.add_mode_inc:
+                st.write("🔹 최근 헌금 수입 내역")
+                display_inc = df_income.iloc[1:, [1,2,3,4]].copy() if len(df_income.columns) >= 5 else df_income.iloc[1:, [1,2,3]].copy()
+                cols_count = len(display_inc.columns)
+                if cols_count == 4: display_inc.columns = ['헌금월', '성명', '금액', '비고']
+                elif cols_count == 3: display_inc.columns = ['헌금월', '성명', '금액']
                 
-                if submitted1 and inc_name and inc_amt > 0:
-                    yyyymm = inc_date.strftime("%Y%m")
-                    new_row = ["", yyyymm, inc_name, inc_amt, inc_note] 
-                    with st.spinner("저장 중..."):
-                        updated_excel = append_row_to_excel(raw_excel, '헌금수입', new_row)
-                        if save_to_drive(FILE_ID, updated_excel):
-                            st.success(f"{inc_name} 성도님의 헌금이 저장되었습니다.")
-                            st.rerun()
-
-        with tab2:
-            with st.form("expense_form"):
-                col1, col2 = st.columns(2)
-                exp_date = col1.date_input("지출일자")
-                exp_item = col2.text_input("지출항목")
-                exp_amt = col1.number_input("지출 금액", min_value=0, step=10000)
-                exp_note = col2.text_input("비고 (선택)")
-                submitted2 = st.form_submit_button("지출 내역 저장")
+                display_inc = display_inc.dropna(subset=['성명'])
+                display_inc['금액'] = pd.to_numeric(display_inc['금액'], errors='coerce').fillna(0)
+                display_inc['금액'] = display_inc['금액'].apply(lambda x: f"{int(x):,} 원")
+                st.dataframe(display_inc, use_container_width=True, hide_index=True)
                 
-                if submitted2 and exp_item and exp_amt > 0:
-                    new_row = [exp_date.strftime("%Y-%m-%d"), exp_item, exp_amt, exp_note]
-                    with st.spinner("저장 중..."):
-                        updated_excel = append_row_to_excel(raw_excel, '지출', new_row)
-                        if save_to_drive(FILE_ID, updated_excel):
-                            st.success(f"지출 내역이 저장되었습니다.")
-                            st.rerun()
-                            
-        with tab3: # 작정액 관리 통합 화면
-            if not st.session_state.add_mode:
-                st.write(" 현재 등록된 작정 명단")
-                # 작정액 시트 정리해서 표시 (1행 제목 제외)
-                display_target = df_target.iloc[1:, :3].copy()
-                display_target.columns = ['성명', '직분', '월 작정액']
-                st.dataframe(display_target.dropna(subset=['성명']), use_container_width=True, hide_index=True)
-                
-                if st.button("➕ 신규 성도 추가"):
-                    st.session_state.add_mode = True
+                if st.button("➕ 신규 헌금 수입 등록"):
+                    st.session_state.add_mode_inc = True
                     st.rerun()
             else:
-                st.write(" 신규 성도 작정액 등록")
-                with st.form("target_form_new"):
-                    new_name = st.text_input("성명")
-                    new_pos = st.text_input("직분")
-                    new_amt = st.number_input("월 작정액", min_value=0, step=10000)
+                st.write("🔹 신규 헌금 수입 등록")
+                with st.form("income_form"):
+                    col1, col2 = st.columns(2)
+                    inc_date = col1.date_input("입금일자")
+                    
+                    # 작정액 명단에서 성명(직분) 리스트 만들기
+                    target_data = df_target.iloc[1:, 0:2].copy()
+                    target_data.columns = ['Name', 'Position']
+                    target_data['Name'] = target_data['Name'].astype(str).str.strip()
+                    target_data['Position'] = target_data['Position'].fillna("").astype(str).str.strip()
+                    target_data = target_data[target_data['Name'] != 'nan']
+                    
+                    options = [f"{row['Name']} ({row['Position']})" if row['Position'] and row['Position'] != 'nan' else row['Name'] for _, row in target_data.iterrows()]
+                    
+                    selected_name_pos = col2.selectbox("성명 (작정 명단에서 선택)", options)
+                    inc_amt = col1.number_input("금액", min_value=0, step=10000)
+                    inc_note = col2.text_input("비고 (선택)")
                     
                     c1, c2 = st.columns(2)
-                    save_btn = c1.form_submit_button("저장하기")
-                    cancel_btn = c2.form_submit_button("취소")
+                    submitted1 = c1.form_submit_button("저장하기")
+                    cancel1 = c2.form_submit_button("취소")
                     
-                    if save_btn and new_name and new_amt > 0:
-                        new_row = [new_name, new_pos, new_amt]
+                    if submitted1 and selected_name_pos and inc_amt > 0:
+                        yyyymm = inc_date.strftime("%Y%m")
+                        real_name = selected_name_pos.split(" (")[0]
+                        real_pos = selected_name_pos.split(" (")[1][:-1] if " (" in selected_name_pos else ""
+                        
+                        # 엑셀 원본 보호를 위해 빈칸, 헌금월, 성명, 금액, 비고, (추가)직분 순으로 저장
+                        new_row = ["", yyyymm, real_name, inc_amt, inc_note, real_pos] 
                         with st.spinner("저장 중..."):
-                            updated_excel = append_row_to_excel(raw_excel, '작정액', new_row)
+                            updated_excel = append_row_to_excel(raw_excel, '헌금수입', new_row)
                             if save_to_drive(FILE_ID, updated_excel):
-                                st.session_state.add_mode = False
-                                st.success(f"{new_name} 성도님의 정보가 저장되었습니다.")
+                                st.session_state.add_mode_inc = False
+                                st.success(f"{real_name} 성도님의 헌금이 저장되었습니다.")
                                 st.rerun()
-                    if cancel_btn:
-                        st.session_state.add_mode = False
+                    if cancel1:
+                        st.session_state.add_mode_inc = False
                         st.rerun()
 
-    # ----------------------------------------------------------------
-    elif menu == "📊 결산 및 통계":
-        st.subheader("📊 재정 결산 및 통계")
-        total_income = df_income.iloc[:, 3].sum() if not df_income.empty else 0
-        total_expense = df_expense['금액'].sum() if not df_expense.empty else 0
-        balance = total_income - total_expense
-        
-        col1, col2, col3 = st.columns(3)
-        col1.metric("총 헌금 수입", f"{int(total_income):,} 원")
-        col2.metric("총 지출액", f"{int(total_expense):,} 원")
-        col3.metric("현재 잔액", f"{int(balance):,} 원")
-        
-        st.divider()
-        st.write("주단위 헌금 집계 (최근 5건)")
-        st.dataframe(df_income.tail(5).iloc[:, [1,2,3,4]], use_container_width=True, hide_index=True)
-
-    # ----------------------------------------------------------------
-    elif menu == "🖨️ 인쇄용 집계표":
-        st.subheader("🖨️ 개인별 집계 시트 업데이트")
-        with st.spinner("엑셀 생성 중..."):
-            excel_data = generate_summary_excel(df_income, df_target, raw_excel)
-        st.download_button("📥 인쇄용 엑셀 다운로드", data=excel_data, file_name="2026_선교헌금_최종집계.xlsx")
+        # --- TAB 2: 지출 내역 관리 ---
+        with tab2:
+            if not st.session_
