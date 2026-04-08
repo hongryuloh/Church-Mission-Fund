@@ -19,7 +19,7 @@ def get_access_token():
     result = app.acquire_token_for_client(scopes=SCOPE)
     return result.get("access_token")
 
-# --- 3. OneDrive에서 엑셀 파일 다운로드 함수 (경로 지정 버전) ---
+# --- 3. OneDrive에서 엑셀 파일 다운로드 함수 (애플리케이션 권한용) ---
 def download_excel_from_onedrive():
     token = get_access_token()
     if not token:
@@ -28,13 +28,13 @@ def download_excel_from_onedrive():
         
     headers = {'Authorization': f'Bearer {token}'}
     
-    # 사용자가 알려주신 폴더 경로와 파일명
-    # 경로: wooridongnaechurch / kimhyuncheol - 2026 / 2026 선교헌금집계.xlsx
+    # 링크에서 추출한 정확한 계정명(UPN)과 폴더/파일명
+    user_upn = "2jesuslm@wooridongnaechurch.onmicrosoft.com"
     folder_path = "wooridongnaechurch/kimhyuncheol - 2026"
     file_name = "2026 선교헌금집계.xlsx"
     
-    # Microsoft Graph API 경로 방식 URL (공백은 자동으로 처리됨)
-    url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{folder_path}/{file_name}"
+    # /me 대신 /users/{계정명} 사용
+    url = f"https://graph.microsoft.com/v1.0/users/{user_upn}/drive/root:/{folder_path}/{file_name}"
     
     response = requests.get(url, headers=headers)
     res_json = response.json()
@@ -44,10 +44,8 @@ def download_excel_from_onedrive():
         file_content = requests.get(download_url).content
         return io.BytesIO(file_content)
     else:
-        # 에러 메시지 상세 출력 (디버깅용)
-        error_msg = res_json.get('error', {}).get('message', '파일을 찾을 수 없습니다.')
+        error_msg = res_json.get('error', {}).get('message', '알 수 없는 오류')
         st.error(f"OneDrive 오류: {error_msg}")
-        st.info(f"찾으려는 경로: {folder_path}/{file_name}")
         return None
 
 # --- 4. 데이터 계산 로직 (VBA 로직 재현) ---
