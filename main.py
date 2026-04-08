@@ -7,6 +7,7 @@ from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
+from datetime import datetime
 
 # --- 1. 보안 설정 ---
 FILE_ID = st.secrets["google"]["file_id"]
@@ -35,16 +36,13 @@ def load_data(file_id):
         df_income = pd.read_excel(io.BytesIO(raw_excel), sheet_name='헌금수입')
         df_target = pd.read_excel(io.BytesIO(raw_excel), sheet_name='작정액')
         
-        # [에러 수정 부분] 지출 시트의 헤더 누락 및 이름 불일치 문제 완벽 방어
         try:
             df_expense = pd.read_excel(io.BytesIO(raw_excel), sheet_name='지출', header=None)
             if not df_expense.empty:
                 first_val = str(df_expense.iloc[0, 0]).strip()
-                # 첫 줄이 진짜 제목(일자, 날짜 등)이면 데이터에서 분리
                 if any(word in first_val for word in ['일자', '날짜', '지출', '일']):
                     df_expense = df_expense[1:].reset_index(drop=True)
                 
-                # 강제로 일자/항목/금액/비고 타이틀 부여
                 cols = ['일자', '항목', '금액', '비고']
                 current_cols = len(df_expense.columns)
                 if current_cols < 4:
@@ -82,12 +80,27 @@ def append_row_to_excel(raw_excel, sheet_name, row_data):
     wb.save(output)
     return output.getvalue()
 
-# --- 날짜 형식 통일 함수 (화면 출력용) ---
+# --- 날짜 형식 통일 함수 (화면 출력용 강화 버전) ---
 def format_date_str(x):
     if pd.isna(x): return ""
-    x_str = str(x).split(' ')[0].replace('.0', '') 
+    
+    # 1. 아예 날짜(datetime) 형식으로 들어온 경우 완벽하게 문자열로 변환
+    if isinstance(x, pd.Timestamp) or hasattr(x, 'strftime'):
+        return x.strftime('%Y-%m-%d')
+        
+    x_str = str(x).strip()
+    x_str = x_str.split(' ')[0] # 00:00:00 시간 부분 제거
+    x_str = x_str.replace('.0', '') # 소수점 제거
+    
+    # 2. 예전 버전에 입력된 YYYYMM (6자리) 데이터 처리
     if len(x_str) == 6 and x_str.isdigit(): 
         return f"{x_str[:4]}-{x_str[4:6]}-01" 
+        
+    # 3. YYYYMMDD (8자리) 데이터가 엑셀에 수기로 적혀있을 경우 방어
+    if len(x_str) == 8 and x_str.isdigit():
+        return f"{x_str[:4]}-{x_str[4:6]}-{x_str[6:8]}"
+        
+    # 4. 방금 입력한 YYYY-MM-DD 형식은 그대로 출력
     return x_str
 
 # --- 3. 데이터 계산 로직 ---
@@ -357,10 +370,7 @@ if df_income is not None:
     elif menu == "📊 결산 및 통계":
         st.subheader("📊 재정 결산 및 통계")
         total_income = df_income.iloc[:, 3].sum() if not df_income.empty else 0
-        
-        # [에러 수정 부분] 금액 이름이 달라도 세번째 열을 무조건 지출액으로 합산
         total_expense = pd.to_numeric(df_expense['금액'], errors='coerce').fillna(0).sum() if not df_expense.empty else 0
-        
         balance = total_income - total_expense
         
         col1, col2, col3 = st.columns(3)
