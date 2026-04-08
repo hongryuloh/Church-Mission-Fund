@@ -7,6 +7,7 @@ from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
+from datetime import datetime
 
 # --- 1. 보안 설정 ---
 FILE_ID = st.secrets["google"]["file_id"]
@@ -37,10 +38,10 @@ def load_data(file_id):
         
         try:
             df_expense = pd.read_excel(io.BytesIO(raw_excel), sheet_name='지출')
-            cols = ['날짜', '년월', '내역', '금액']
+            cols = ['날짜', '년월', '내역', '금액', '비고']
             df_expense.columns = cols[:len(df_expense.columns)] + list(df_expense.columns)[len(cols):]
         except:
-            df_expense = pd.DataFrame(columns=['날짜', '년월', '내역', '금액'])
+            df_expense = pd.DataFrame(columns=['날짜', '년월', '내역', '금액', '비고'])
             
         return df_income, df_target, df_expense, raw_excel
     except Exception as e:
@@ -58,37 +59,23 @@ def save_to_drive(file_id, excel_bytes):
         st.error(f"저장 실패: {e}")
         return False
 
-# [공통] 시트 전체를 데이터프레임 내용으로 덮어쓰는 함수 (수정/삭제용)
 def overwrite_sheet(raw_excel, sheet_name, df_new):
     wb = openpyxl.load_workbook(io.BytesIO(raw_excel))
-    if sheet_name in wb.sheetnames:
-        del wb[sheet_name]
+    if sheet_name in wb.sheetnames: del wb[sheet_name]
     ws = wb.create_sheet(sheet_name)
-    
-    # 헤더 작성
     ws.append(df_new.columns.tolist())
-    # 데이터 작성
-    for r in df_new.values.tolist():
-        ws.append(r)
-        
-    output = io.BytesIO()
-    wb.save(output)
-    return output.getvalue()
+    for r in df_new.values.tolist(): ws.append(r)
+    output = io.BytesIO(); wb.save(output); return output.getvalue()
 
 def append_row_to_excel(raw_excel, sheet_name, row_data):
     wb = openpyxl.load_workbook(io.BytesIO(raw_excel))
     ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.create_sheet(sheet_name)
-    
-    # 실제 데이터가 있는 마지막 행 찾기
     last_row = 1
     for row in range(ws.max_row, 0, -1):
         if ws.cell(row=row, column=3).value is not None:
             last_row = row + 1
             break
-    
-    for col, val in enumerate(row_data, 1):
-        ws.cell(row=last_row, column=col, value=val)
-        
+    for col, val in enumerate(row_data, 1): ws.cell(row=last_row, column=col, value=val)
     output = io.BytesIO(); wb.save(output); return output.getvalue()
 
 def format_date_str(x):
@@ -107,7 +94,6 @@ def calculate_details(user_name, df_income, df_target, start_year=2026):
     u_inc = df_income[df_income.iloc[:, 2].astype(str).str.strip() == user_name].copy()
     u_inc['YM'] = u_inc.iloc[:, 1].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
     paid = u_inc.groupby('YM').apply(lambda x: pd.to_numeric(x.iloc[:, 3], errors='coerce').sum()).to_dict()
-    
     alloc, lab = [0.0]*13, [""]*13
     sorted_m = sorted([m for m in paid.keys() if m.startswith(str(start_year))])
     if commit > 0:
@@ -146,8 +132,6 @@ def generate_summary_excel(df_income, df_target, raw_excel, start_year=2026):
 # --- 5. 앱 화면 구성 ---
 st.set_page_config(page_title="2026 선교헌금 관리", layout="wide")
 st.title("⛪ 2026 선교헌금 관리 시스템")
-
-# 세션 상태 초기화
 for k in ['edit_idx_inc', 'edit_idx_exp', 'edit_idx_tgt', 'mode_inc', 'mode_exp', 'mode_tgt']:
     if k not in st.session_state: st.session_state[k] = None
 
@@ -175,20 +159,22 @@ if df_income is not None:
     elif menu == "✍️ 데이터 관리":
         tab1, tab2, tab3 = st.tabs(["💰 헌금 수입", "📉 지출 내역", "👤 작정액 관리"])
         
-        # --- TAB 1: 헌금 수입 ---
         with tab1:
             if st.session_state.mode_inc is None:
                 st.write("🔹 최근 헌금 수입 (행 번호를 선택하여 수정/삭제 가능)")
                 df_view = df_income.copy()
-                df_view.columns = ['날짜', '년월', '성명', '금액', '비고'] + list(df_view.columns)[5:]
+                inc_headers = ['날짜', '년월', '성명', '금액', '비고']
+                # [에러 수정 핵심] 실제 열 개수에 맞춰 이름 할당
+                df_view.columns = inc_headers[:len(df_view.columns)] + list(df_view.columns)[len(inc_headers):]
+                
                 df_view['날짜'] = df_view['날짜'].apply(format_date_str)
                 df_view['금액'] = pd.to_numeric(df_view['금액'], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
                 st.dataframe(df_view.iloc[1:].dropna(subset=['성명']), use_container_width=True)
                 
                 c1, c2, c3 = st.columns([2,1,1])
                 if c1.button("➕ 신규 등록"): st.session_state.mode_inc = 'add'; st.rerun()
-                idx = c2.number_input("수정/삭제할 행 번호", min_value=1, max_value=len(df_income)-1, step=1)
-                if c3.button("📝 수정/삭제 실행"): st.session_state.edit_idx_inc = idx; st.session_state.mode_inc = 'edit'; st.rerun()
+                idx = c2.number_input("행 번호", min_value=1, max_value=len(df_income)-1, step=1, key="inc_idx_input")
+                if c3.button("📝 수정/삭제"): st.session_state.edit_idx_inc = idx; st.session_state.mode_inc = 'edit'; st.rerun()
             
             elif st.session_state.mode_inc == 'add':
                 with st.form("inc_add"):
@@ -196,7 +182,7 @@ if df_income is not None:
                     options = [f"{r[0]} ({r[1]})" if pd.notna(r[1]) else str(r[0]) for r in df_target.iloc[1:, 0:2].values if pd.notna(r[0])]
                     sel, note = st.selectbox("성명 선택", options), st.text_input("비고")
                     if st.form_submit_button("저장"):
-                        new = ["", d.strftime("%Y-%m-%d"), d.strftime("%Y%m"), sel.split(" (")[0], amt, note]
+                        new = [d.strftime("%Y-%m-%d"), d.strftime("%Y%m"), sel.split(" (")[0], amt, note]
                         if save_to_drive(FILE_ID, append_row_to_excel(raw_excel, '헌금수입', new)):
                             st.session_state.mode_inc = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_inc = None; st.rerun()
@@ -204,14 +190,14 @@ if df_income is not None:
             elif st.session_state.mode_inc == 'edit':
                 curr = df_income.iloc[st.session_state.edit_idx_inc]
                 with st.form("inc_edit"):
-                    st.write(f"⚠️ {st.session_state.edit_idx_inc}번 행 수정 중")
-                    new_d = st.date_input("날짜", value=pd.to_datetime(curr.iloc[1]) if pd.notna(curr.iloc[1]) else datetime.now())
+                    st.write(f"⚠️ {st.session_state.edit_idx_inc}번 행 수정")
+                    new_d = st.date_input("날짜", value=pd.to_datetime(curr.iloc[0]) if pd.notna(curr.iloc[0]) else datetime.now())
                     new_n = st.text_input("성명", value=str(curr.iloc[2]))
                     new_a = st.number_input("금액", value=int(pd.to_numeric(curr.iloc[3], errors='coerce') or 0))
-                    new_b = st.text_input("비고", value=str(curr.iloc[4]) if pd.notna(curr.iloc[4]) else "")
+                    new_b = st.text_input("비고", value=str(curr.iloc[4]) if len(curr)>4 and pd.notna(curr.iloc[4]) else "")
                     
                     if st.form_submit_button("✅ 수정 완료"):
-                        df_income.iloc[st.session_state.edit_idx_inc, 1:5] = [new_d.strftime("%Y-%m-%d"), new_d.strftime("%Y%m"), new_n, new_a, new_b]
+                        df_income.iloc[st.session_state.edit_idx_inc, 0:5] = [new_d.strftime("%Y-%m-%d"), new_d.strftime("%Y%m"), new_n, new_a, new_b]
                         if save_to_drive(FILE_ID, overwrite_sheet(raw_excel, '헌금수입', df_income)):
                             st.session_state.mode_inc = None; st.rerun()
                     if st.form_submit_button("🗑️ 이 행 삭제", type="primary"):
@@ -220,29 +206,28 @@ if df_income is not None:
                             st.session_state.mode_inc = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_inc = None; st.rerun()
 
-        # --- TAB 2: 지출 내역 ---
         with tab2:
             if st.session_state.mode_exp is None:
                 st.write("🔹 지출 내역")
                 df_exp_view = df_expense.copy()
+                exp_headers = ['날짜', '년월', '내역', '금액', '비고']
+                df_exp_view.columns = exp_headers[:len(df_exp_view.columns)] + list(df_exp_view.columns)[len(exp_headers):]
                 df_exp_view['날짜'] = df_exp_view['날짜'].apply(format_date_str)
                 df_exp_view['금액'] = pd.to_numeric(df_exp_view['금액'], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
                 st.dataframe(df_exp_view, use_container_width=True)
-                
                 c1, c2, c3 = st.columns([2,1,1])
                 if c1.button("➕ 지출 등록"): st.session_state.mode_exp = 'add'; st.rerun()
-                idx = c2.number_input("수정/삭제 행 번호", min_value=0, max_value=len(df_expense)-1, step=1, key="exp_idx")
-                if c3.button("📝 수정/삭제", key="exp_btn"): st.session_state.edit_idx_exp = idx; st.session_state.mode_exp = 'edit'; st.rerun()
-
+                idx = c2.number_input("행 번호", min_value=0, max_value=len(df_expense)-1, step=1, key="exp_idx_input")
+                if c3.button("📝 수정/삭제"): st.session_state.edit_idx_exp = idx; st.session_state.mode_exp = 'edit'; st.rerun()
             elif st.session_state.mode_exp == 'edit':
                 curr = df_expense.iloc[st.session_state.edit_idx_exp]
                 with st.form("exp_edit"):
                     st.write(f"⚠️ 지출 {st.session_state.edit_idx_exp}번 수정")
-                    new_d = st.date_input("날짜", value=pd.to_datetime(curr['날짜']) if pd.notna(curr['날짜']) else datetime.now())
-                    new_i = st.text_input("내역", value=str(curr['내역']))
-                    new_a = st.number_input("금액", value=int(pd.to_numeric(curr['금액'], errors='coerce') or 0))
+                    new_d = st.date_input("날짜", value=pd.to_datetime(curr.iloc[0]) if pd.notna(curr.iloc[0]) else datetime.now())
+                    new_i = st.text_input("내역", value=str(curr.iloc[2]))
+                    new_a = st.number_input("금액", value=int(pd.to_numeric(curr.iloc[3], errors='coerce') or 0))
                     if st.form_submit_button("✅ 수정"):
-                        df_expense.iloc[st.session_state.edit_idx_exp] = [new_d.strftime("%Y-%m-%d"), new_d.strftime("%Y%m"), new_i, new_a]
+                        df_expense.iloc[st.session_state.edit_idx_exp, 0:4] = [new_d.strftime("%Y-%m-%d"), new_d.strftime("%Y%m"), new_i, new_a]
                         if save_to_drive(FILE_ID, overwrite_sheet(raw_excel, '지출', df_expense)):
                             st.session_state.mode_exp = None; st.rerun()
                     if st.form_submit_button("🗑️ 삭제", type="primary"):
@@ -251,20 +236,18 @@ if df_income is not None:
                             st.session_state.mode_exp = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_exp = None; st.rerun()
 
-        # --- TAB 3: 작정액 관리 ---
         with tab3:
             if st.session_state.mode_tgt is None:
                 st.write("🔹 작정 명단")
                 df_tgt_view = df_target.iloc[1:].copy()
-                df_tgt_view.columns = ['성명', '직분', '작정액'] + list(df_tgt_view.columns)[3:]
+                tgt_headers = ['성명', '직분', '작정액']
+                df_tgt_view.columns = tgt_headers[:len(df_tgt_view.columns)] + list(df_tgt_view.columns)[len(tgt_headers):]
                 df_tgt_view['작정액'] = pd.to_numeric(df_tgt_view['작정액'], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
                 st.dataframe(df_tgt_view, use_container_width=True)
-                
                 c1, c2, c3 = st.columns([2,1,1])
                 if c1.button("➕ 신규 성도"): st.session_state.mode_tgt = 'add'; st.rerun()
-                idx = c2.number_input("행 번호", min_value=1, max_value=len(df_target)-1, step=1, key="tgt_idx")
-                if c3.button("📝 수정/삭제", key="tgt_btn"): st.session_state.edit_idx_tgt = idx; st.session_state.mode_tgt = 'edit'; st.rerun()
-
+                idx = c2.number_input("행 번호", min_value=1, max_value=len(df_target)-1, step=1, key="tgt_idx_input")
+                if c3.button("📝 수정/삭제"): st.session_state.edit_idx_tgt = idx; st.session_state.mode_tgt = 'edit'; st.rerun()
             elif st.session_state.mode_tgt == 'edit':
                 curr = df_target.iloc[st.session_state.edit_idx_tgt]
                 with st.form("tgt_edit"):
