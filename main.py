@@ -14,7 +14,6 @@ FILE_ID = st.secrets["google"]["file_id"]
 
 def get_gdrive_service():
     creds_json = json.loads(st.secrets["google"]["service_account"])
-    # 쓰기 권한을 위해 scope 변경 ('drive.readonly' -> 'drive')
     credentials = service_account.Credentials.from_service_account_info(
         creds_json, scopes=['https://www.googleapis.com/auth/drive']
     )
@@ -37,7 +36,6 @@ def load_data(file_id):
         df_income = pd.read_excel(io.BytesIO(raw_excel), sheet_name='헌금수입')
         df_target = pd.read_excel(io.BytesIO(raw_excel), sheet_name='작정액')
         
-        # 지출 시트가 없으면 빈 데이터프레임 생성
         try:
             df_expense = pd.read_excel(io.BytesIO(raw_excel), sheet_name='지출')
         except:
@@ -53,7 +51,7 @@ def save_to_drive(file_id, excel_bytes):
         service = get_gdrive_service()
         media = MediaIoBaseUpload(io.BytesIO(excel_bytes), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         service.files().update(fileId=file_id, media_body=media).execute()
-        st.cache_data.clear() # 저장 후 캐시 초기화 (새로고침 효과)
+        st.cache_data.clear() 
         return True
     except Exception as e:
         st.error(f"저장 실패: {e}")
@@ -63,7 +61,6 @@ def append_row_to_excel(raw_excel, sheet_name, row_data):
     wb = openpyxl.load_workbook(io.BytesIO(raw_excel))
     if sheet_name not in wb.sheetnames:
         ws = wb.create_sheet(sheet_name)
-        if sheet_name == '지출': ws.append(['일자', '항목', '금액', '비고'])
     else:
         ws = wb[sheet_name]
     
@@ -164,6 +161,10 @@ def generate_summary_excel(df_income, df_target, raw_excel, start_year=2026):
 st.set_page_config(page_title="2026 선교헌금 관리", layout="wide")
 st.title("⛪ 2026 선교헌금 관리 시스템")
 
+# 세션 상태 초기화 (입력 모드 전환용)
+if 'add_mode' not in st.session_state:
+    st.session_state.add_mode = False
+
 with st.spinner('데이터를 동기화하는 중입니다...'):
     df_income, df_target, df_expense, raw_excel = load_data(FILE_ID)
 
@@ -193,9 +194,9 @@ if df_income is not None:
     # ----------------------------------------------------------------
     elif menu == "✍️ 데이터 입력":
         st.subheader("✍️ 내역 입력하기")
-        tab1, tab2, tab3 = st.tabs(["헌금 수입", "지출 내역", "작정액 추가"])
+        tab1, tab2, tab3 = st.tabs(["헌금 수입", "지출 내역", "작정액 관리"])
         
-        with tab1: # 헌금 수입 입력
+        with tab1:
             with st.form("income_form"):
                 col1, col2 = st.columns(2)
                 inc_date = col1.date_input("입금일자")
@@ -206,15 +207,14 @@ if df_income is not None:
                 
                 if submitted1 and inc_name and inc_amt > 0:
                     yyyymm = inc_date.strftime("%Y%m")
-                    # 원본 엑셀 열 순서에 맞게 리스트 구성: [빈칸, 헌금월, 성명, 금액, 비고]
                     new_row = ["", yyyymm, inc_name, inc_amt, inc_note] 
-                    with st.spinner("구글 드라이브에 저장 중..."):
+                    with st.spinner("저장 중..."):
                         updated_excel = append_row_to_excel(raw_excel, '헌금수입', new_row)
                         if save_to_drive(FILE_ID, updated_excel):
-                            st.success(f"{inc_name} 성도님의 헌금({inc_amt:,}원)이 저장되었습니다!")
+                            st.success(f"{inc_name} 성도님의 헌금이 저장되었습니다.")
                             st.rerun()
 
-        with tab2: # 지출 입력
+        with tab2:
             with st.form("expense_form"):
                 col1, col2 = st.columns(2)
                 exp_date = col1.date_input("지출일자")
@@ -225,72 +225,65 @@ if df_income is not None:
                 
                 if submitted2 and exp_item and exp_amt > 0:
                     new_row = [exp_date.strftime("%Y-%m-%d"), exp_item, exp_amt, exp_note]
-                    with st.spinner("구글 드라이브에 저장 중..."):
+                    with st.spinner("저장 중..."):
                         updated_excel = append_row_to_excel(raw_excel, '지출', new_row)
                         if save_to_drive(FILE_ID, updated_excel):
-                            st.success(f"지출 내역({exp_amt:,}원)이 저장되었습니다!")
+                            st.success(f"지출 내역이 저장되었습니다.")
                             st.rerun()
                             
-        with tab3: # 작정액 추가
-            with st.form("target_form"):
-                tgt_name = st.text_input("새로운 성명")
-                tgt_amt = st.number_input("작정액", min_value=0, step=10000)
-                submitted3 = st.form_submit_button("작정액 저장")
+        with tab3: # 작정액 관리 통합 화면
+            if not st.session_state.add_mode:
+                st.write(" 현재 등록된 작정 명단")
+                # 작정액 시트 정리해서 표시 (1행 제목 제외)
+                display_target = df_target.iloc[1:, :3].copy()
+                display_target.columns = ['성명', '직분', '월 작정액']
+                st.dataframe(display_target.dropna(subset=['성명']), use_container_width=True, hide_index=True)
                 
-                if submitted3 and tgt_name and tgt_amt > 0:
-                    # 원본 엑셀 열 순서: [성명, 직분(빈칸가능), 금액]
-                    new_row = [tgt_name, "", tgt_amt]
-                    with st.spinner("구글 드라이브에 저장 중..."):
-                        updated_excel = append_row_to_excel(raw_excel, '작정액', new_row)
-                        if save_to_drive(FILE_ID, updated_excel):
-                            st.success(f"{tgt_name} 성도님의 작정액({tgt_amt:,}원)이 저장되었습니다!")
-                            st.rerun()
+                if st.button("➕ 신규 성도 추가"):
+                    st.session_state.add_mode = True
+                    st.rerun()
+            else:
+                st.write(" 신규 성도 작정액 등록")
+                with st.form("target_form_new"):
+                    new_name = st.text_input("성명")
+                    new_pos = st.text_input("직분")
+                    new_amt = st.number_input("월 작정액", min_value=0, step=10000)
+                    
+                    c1, c2 = st.columns(2)
+                    save_btn = c1.form_submit_button("저장하기")
+                    cancel_btn = c2.form_submit_button("취소")
+                    
+                    if save_btn and new_name and new_amt > 0:
+                        new_row = [new_name, new_pos, new_amt]
+                        with st.spinner("저장 중..."):
+                            updated_excel = append_row_to_excel(raw_excel, '작정액', new_row)
+                            if save_to_drive(FILE_ID, updated_excel):
+                                st.session_state.add_mode = False
+                                st.success(f"{new_name} 성도님의 정보가 저장되었습니다.")
+                                st.rerun()
+                    if cancel_btn:
+                        st.session_state.add_mode = False
+                        st.rerun()
 
     # ----------------------------------------------------------------
     elif menu == "📊 결산 및 통계":
         st.subheader("📊 재정 결산 및 통계")
-        tab_total, tab_weekly = st.tabs(["총 결산", "월/주단위 요약"])
+        total_income = df_income.iloc[:, 3].sum() if not df_income.empty else 0
+        total_expense = df_expense['금액'].sum() if not df_expense.empty else 0
+        balance = total_income - total_expense
         
-        with tab_total:
-            # 수입 총액 계산 (3번째 열: 금액)
-            total_income = df_income.iloc[:, 3].sum() if not df_income.empty else 0
-            # 지출 총액 계산
-            total_expense = df_expense['금액'].sum() if not df_expense.empty else 0
-            balance = total_income - total_expense
-            
-            col1, col2, col3 = st.columns(3)
-            col1.metric("총 헌금 수입", f"{int(total_income):,} 원")
-            col2.metric("총 지출액", f"{int(total_expense):,} 원")
-            col3.metric("현재 잔액", f"{int(balance):,} 원", delta=int(balance))
-            
-            st.divider()
-            st.write("최근 지출 내역")
-            st.dataframe(df_expense.tail(5), use_container_width=True)
-
-        with tab_weekly:
-            st.write("월별 헌금 수입 요약")
-            if not df_income.empty:
-                # 헌금월(YYYYMM) 기준으로 그룹화
-                df_income['월별'] = df_income.iloc[:, 1].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-                monthly_sum = df_income.groupby('월별').iloc[:, 3].sum().reset_index()
-                monthly_sum.columns = ['헌금월', '수입 합계']
-                
-                st.bar_chart(monthly_sum.set_index('헌금월'))
-                st.dataframe(monthly_sum, use_container_width=True)
-            else:
-                st.info("수입 내역이 없습니다.")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("총 헌금 수입", f"{int(total_income):,} 원")
+        col2.metric("총 지출액", f"{int(total_expense):,} 원")
+        col3.metric("현재 잔액", f"{int(balance):,} 원")
+        
+        st.divider()
+        st.write("주단위 헌금 집계 (최근 5건)")
+        st.dataframe(df_income.tail(5).iloc[:, [1,2,3,4]], use_container_width=True, hide_index=True)
 
     # ----------------------------------------------------------------
     elif menu == "🖨️ 인쇄용 집계표":
-        st.subheader("🖨️ 개인별 집계 시트 업데이트 및 다운로드")
-        st.write("기존 엑셀 원본 파일에 **'개인별 집계'** 시트를 최신 내용으로 덮어씌워 생성합니다.")
-        
-        with st.spinner("엑셀 파일을 생성 중입니다..."):
+        st.subheader("🖨️ 개인별 집계 시트 업데이트")
+        with st.spinner("엑셀 생성 중..."):
             excel_data = generate_summary_excel(df_income, df_target, raw_excel)
-            
-        st.download_button(
-            label="📥 인쇄용 엑셀 파일 다운로드",
-            data=excel_data,
-            file_name="2026_선교헌금_최종집계.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        st.download_button("📥 인쇄용 엑셀 다운로드", data=excel_data, file_name="2026_선교헌금_최종집계.xlsx")
