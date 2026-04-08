@@ -33,15 +33,16 @@ def load_data(file_id):
         file_stream.seek(0)
         
         raw_excel = file_stream.getvalue() 
-        df_income = pd.read_excel(io.BytesIO(raw_excel), sheet_name='헌금수입')
-        df_target = pd.read_excel(io.BytesIO(raw_excel), sheet_name='작정액')
+        # 데이터를 읽어올 때 모든 컬럼을 'object' 타입으로 읽어 데이터 수정 시 타입 에러 방지
+        df_income = pd.read_excel(io.BytesIO(raw_excel), sheet_name='헌금수입').astype(object)
+        df_target = pd.read_excel(io.BytesIO(raw_excel), sheet_name='작정액').astype(object)
         
         try:
-            df_expense = pd.read_excel(io.BytesIO(raw_excel), sheet_name='지출')
+            df_expense = pd.read_excel(io.BytesIO(raw_excel), sheet_name='지출').astype(object)
             cols = ['날짜', '년월', '내역', '금액', '비고']
             df_expense.columns = cols[:len(df_expense.columns)] + list(df_expense.columns)[len(cols):]
         except:
-            df_expense = pd.DataFrame(columns=['날짜', '년월', '내역', '금액', '비고'])
+            df_expense = pd.DataFrame(columns=['날짜', '년월', '내역', '금액', '비고']).astype(object)
             
         return df_income, df_target, df_expense, raw_excel
     except Exception as e:
@@ -178,12 +179,11 @@ if df_income is not None:
             
             elif st.session_state.mode_inc == 'add':
                 with st.form("inc_add"):
-                    d, amt = st.date_input("입금일자"), st.number_input("금액", min_value=0, step=1000) # 단위 1,000원
+                    d, amt = st.date_input("입금일자"), st.number_input("금액", min_value=0, step=1000)
                     options = [f"{r[0]} ({r[1]})" if pd.notna(r[1]) else str(r[0]) for r in df_target.iloc[1:, 0:2].values if pd.notna(r[0])]
                     sel, note = st.selectbox("성명 선택", options), st.text_input("비고")
                     if st.form_submit_button("저장"):
                         new = [d.strftime("%Y-%m-%d"), d.strftime("%Y%m"), sel.split(" (")[0], amt, note]
-                        # 실제 열 개수만큼만 데이터 슬라이싱
                         if save_to_drive(FILE_ID, append_row_to_excel(raw_excel, '헌금수입', new[:len(df_income.columns)])):
                             st.session_state.mode_inc = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_inc = None; st.rerun()
@@ -206,8 +206,8 @@ if df_income is not None:
                     new_b = st.text_input("비고", value=str(curr.iloc[4]) if len(curr)>4 and pd.notna(curr.iloc[4]) else "")
                     
                     if st.form_submit_button("✅ 수정 완료"):
-                        # [핵심 수정] 엑셀 열 개수에 맞춰 정확한 길이의 리스트 생성
                         new_data_row = [new_d.strftime("%Y-%m-%d"), new_d.strftime("%Y%m"), new_n, new_a, new_b]
+                        # 0:len(...) 슬라이싱을 통해 데이터 개수를 맞추고 타입 자유 보장
                         df_income.iloc[st.session_state.edit_idx_inc, 0:len(df_income.columns)] = new_data_row[:len(df_income.columns)]
                         if save_to_drive(FILE_ID, overwrite_sheet(raw_excel, '헌금수입', df_income)):
                             st.session_state.mode_inc = None; st.rerun()
@@ -241,7 +241,7 @@ if df_income is not None:
                     new_d = st.date_input("날짜", value=pd.to_datetime(curr.iloc[0]) if pd.notna(curr.iloc[0]) else datetime.now())
                     new_i = st.text_input("내역", value=str(curr.iloc[2]))
                     new_a = st.number_input("금액", value=int(pd.to_numeric(curr.iloc[3], errors='coerce') or 0), step=1000)
-                    if st.form_submit_button("✅ 수정"):
+                    if st.form_submit_button("✅ 수정 완료"):
                         new_data_row = [new_d.strftime("%Y-%m-%d"), new_d.strftime("%Y%m"), new_i, new_a]
                         df_expense.iloc[st.session_state.edit_idx_exp, 0:len(df_expense.columns)] = new_data_row[:len(df_expense.columns)]
                         if save_to_drive(FILE_ID, overwrite_sheet(raw_excel, '지출', df_expense)):
