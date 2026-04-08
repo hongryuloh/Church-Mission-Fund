@@ -35,8 +35,21 @@ def load_data(file_id):
         df_income = pd.read_excel(io.BytesIO(raw_excel), sheet_name='헌금수입')
         df_target = pd.read_excel(io.BytesIO(raw_excel), sheet_name='작정액')
         
+        # [에러 수정 부분] 지출 시트의 헤더 누락 및 이름 불일치 문제 완벽 방어
         try:
-            df_expense = pd.read_excel(io.BytesIO(raw_excel), sheet_name='지출')
+            df_expense = pd.read_excel(io.BytesIO(raw_excel), sheet_name='지출', header=None)
+            if not df_expense.empty:
+                first_val = str(df_expense.iloc[0, 0]).strip()
+                # 첫 줄이 진짜 제목(일자, 날짜 등)이면 데이터에서 분리
+                if any(word in first_val for word in ['일자', '날짜', '지출', '일']):
+                    df_expense = df_expense[1:].reset_index(drop=True)
+                
+                # 강제로 일자/항목/금액/비고 타이틀 부여
+                cols = ['일자', '항목', '금액', '비고']
+                current_cols = len(df_expense.columns)
+                if current_cols < 4:
+                    cols = cols[:current_cols]
+                df_expense.columns = cols + list(df_expense.columns)[len(cols):]
         except:
             df_expense = pd.DataFrame(columns=['일자', '항목', '금액', '비고'])
             
@@ -71,9 +84,10 @@ def append_row_to_excel(raw_excel, sheet_name, row_data):
 
 # --- 날짜 형식 통일 함수 (화면 출력용) ---
 def format_date_str(x):
-    x_str = str(x).split(' ')[0].replace('.0', '') # 시간(00:00:00)이나 소수점 제거
+    if pd.isna(x): return ""
+    x_str = str(x).split(' ')[0].replace('.0', '') 
     if len(x_str) == 6 and x_str.isdigit(): 
-        return f"{x_str[:4]}-{x_str[4:6]}-01" # 과거 YYYYMM 데이터를 YYYY-MM-01로 변환
+        return f"{x_str[:4]}-{x_str[4:6]}-01" 
     return x_str
 
 # --- 3. 데이터 계산 로직 ---
@@ -85,8 +99,6 @@ def calculate_details(user_name, df_income, df_target, start_year=2026):
     monthly_commit = float(monthly_commit) if pd.notna(monthly_commit) else 0.0
     
     user_income = df_income[df_income.iloc[:, 2].astype(str).str.strip() == user_name].copy()
-    
-    # [수정됨] 일자(yyyy-mm-dd)를 입력해도 월별 집계를 위해 YYYYMM 형식으로 앞 6자리만 안전하게 추출하는 로직
     user_income['YYYYMM_STR'] = user_income.iloc[:, 1].astype(str).str.replace(r'\.0$', '', regex=True).str.split(' ').str[0].str.replace('-', '', regex=False).str[:6]
     
     amt_col_name = user_income.columns[3] 
@@ -216,7 +228,7 @@ if df_income is not None:
                 elif cols_count == 3: display_inc.columns = ['헌금일자', '성명', '금액']
                 
                 display_inc = display_inc.dropna(subset=['성명'])
-                display_inc['헌금일자'] = display_inc['헌금일자'].apply(format_date_str) # 일자 포맷 적용
+                display_inc['헌금일자'] = display_inc['헌금일자'].apply(format_date_str) 
                 display_inc['금액'] = pd.to_numeric(display_inc['금액'], errors='coerce').fillna(0)
                 display_inc['금액'] = display_inc['금액'].apply(lambda x: f"{int(x):,} 원")
                 st.dataframe(display_inc, use_container_width=True, hide_index=True)
@@ -244,10 +256,9 @@ if df_income is not None:
                     
                     c1, c2 = st.columns(2)
                     submitted1 = c1.form_submit_button("저장하기")
-                    cancel1 = c2.form_submit_button("목록(조회화면)으로 돌아가기") # 버튼 이름 변경
+                    cancel1 = c2.form_submit_button("목록(조회화면)으로 돌아가기") 
                     
                     if submitted1 and selected_name_pos and inc_amt > 0:
-                        # [수정됨] 엑셀에 yyyy-mm-dd 형태로 저장
                         yyyymmdd = inc_date.strftime("%Y-%m-%d") 
                         real_name = selected_name_pos.split(" (")[0]
                         real_pos = selected_name_pos.split(" (")[1][:-1] if " (" in selected_name_pos else ""
@@ -269,7 +280,7 @@ if df_income is not None:
                 st.write("🔹 지출 내역")
                 if not df_expense.empty:
                     display_exp = df_expense.copy()
-                    display_exp['일자'] = display_exp['일자'].apply(format_date_str) # 일자 포맷 적용
+                    display_exp['일자'] = display_exp['일자'].apply(format_date_str) 
                     display_exp['금액'] = pd.to_numeric(display_exp['금액'], errors='coerce').fillna(0)
                     display_exp['금액'] = display_exp['금액'].apply(lambda x: f"{int(x):,} 원")
                     st.dataframe(display_exp, use_container_width=True, hide_index=True)
@@ -290,7 +301,7 @@ if df_income is not None:
                     
                     c1, c2 = st.columns(2)
                     submitted2 = c1.form_submit_button("저장하기")
-                    cancel2 = c2.form_submit_button("목록(조회화면)으로 돌아가기") # 버튼 이름 변경
+                    cancel2 = c2.form_submit_button("목록(조회화면)으로 돌아가기") 
                     
                     if submitted2 and exp_item and exp_amt > 0:
                         new_row = [exp_date.strftime("%Y-%m-%d"), exp_item, exp_amt, exp_note]
@@ -328,7 +339,7 @@ if df_income is not None:
                     
                     c1, c2 = st.columns(2)
                     save_btn = c1.form_submit_button("저장하기")
-                    cancel_btn = c2.form_submit_button("목록(조회화면)으로 돌아가기") # 버튼 이름 변경
+                    cancel_btn = c2.form_submit_button("목록(조회화면)으로 돌아가기") 
                     
                     if save_btn and new_name and new_amt > 0:
                         new_row = [new_name, new_pos, new_amt]
@@ -346,7 +357,10 @@ if df_income is not None:
     elif menu == "📊 결산 및 통계":
         st.subheader("📊 재정 결산 및 통계")
         total_income = df_income.iloc[:, 3].sum() if not df_income.empty else 0
-        total_expense = df_expense['금액'].sum() if not df_expense.empty else 0
+        
+        # [에러 수정 부분] 금액 이름이 달라도 세번째 열을 무조건 지출액으로 합산
+        total_expense = pd.to_numeric(df_expense['금액'], errors='coerce').fillna(0).sum() if not df_expense.empty else 0
+        
         balance = total_income - total_expense
         
         col1, col2, col3 = st.columns(3)
@@ -359,7 +373,7 @@ if df_income is not None:
         
         display_recent = df_income.tail(5).iloc[:, [1,2,3]].copy()
         display_recent.columns = ['헌금일자', '성명', '금액']
-        display_recent['헌금일자'] = display_recent['헌금일자'].apply(format_date_str) # 일자 포맷 적용
+        display_recent['헌금일자'] = display_recent['헌금일자'].apply(format_date_str) 
         display_recent['금액'] = pd.to_numeric(display_recent['금액'], errors='coerce').fillna(0)
         display_recent['금액'] = display_recent['금액'].apply(lambda x: f"{int(x):,} 원")
         st.dataframe(display_recent, use_container_width=True, hide_index=True)
