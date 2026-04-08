@@ -1,54 +1,43 @@
 import streamlit as st
 import pandas as pd
-import msal
-import requests
 import io
+import json
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 
 # --- 1. 보안 설정 (Streamlit Secrets에서 가져오기) ---
-CLIENT_ID = st.secrets["azure"]["client_id"]
-CLIENT_SECRET = st.secrets["azure"]["client_secret"]
-TENANT_ID = st.secrets["azure"]["tenant_id"]
-FILE_NAME = "2026 선교헌금집계.xlsx" # OneDrive에 있는 정확한 파일명
+FILE_ID = st.secrets["google"]["file_id"]
 
-AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
-SCOPE = ["https://graph.microsoft.com/.default"]
+def get_gdrive_service():
+    creds_json = json.loads(st.secrets["google"]["service_account"])
+    credentials = service_account.Credentials.from_service_account_info(
+        creds_json, scopes=['https://www.googleapis.com/auth/drive.readonly']
+    )
+    return build('drive', 'v3', credentials=credentials)
 
-# --- 2. OneDrive 접속용 토큰 받기 함수 ---
-def get_access_token():
-    app = msal.ConfidentialClientApplication(CLIENT_ID, authority=AUTHORITY, client_credential=CLIENT_SECRET)
-    result = app.acquire_token_for_client(scopes=SCOPE)
-    return result.get("access_token")
-
-# --- 3. OneDrive에서 엑셀 파일 다운로드 함수 (애플리케이션 권한용) ---
-def download_excel_from_onedrive():
-    token = get_access_token()
-    if not token:
-        st.error("토큰을 가져오지 못했습니다. Azure 설정을 확인하세요.")
-        return None
+# --- 2. 구글 드라이브 엑셀 다운로드 함수 ---
+@st.cache_data(ttl=300) # 5분마다 갱신하여 데이터 최신화
+def load_data(file_id):
+    try:
+        service = get_gdrive_service()
+        request = service.files().get_media(fileId=file_id)
+        file_stream = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_stream, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        file_stream.seek(0)
         
-    headers = {'Authorization': f'Bearer {token}'}
-    
-    # 링크에서 추출한 정확한 계정명(UPN)과 폴더/파일명
-    user_upn = "2jesuslm@wooridongnaechurch.onmicrosoft.com"
-    folder_path = "wooridongnaechurch/kimhyuncheol - 2026"
-    file_name = "2026 선교헌금집계.xlsx"
-    
-    # /me 대신 /users/{계정명} 사용
-    url = f"https://graph.microsoft.com/v1.0/users/{user_upn}/drive/root:/{folder_path}/{file_name}"
-    
-    response = requests.get(url, headers=headers)
-    res_json = response.json()
-    
-    if '@microsoft.graph.downloadUrl' in res_json:
-        download_url = res_json['@microsoft.graph.downloadUrl']
-        file_content = requests.get(download_url).content
-        return io.BytesIO(file_content)
-    else:
-        error_msg = res_json.get('error', {}).get('message', '알 수 없는 오류')
-        st.error(f"OneDrive 오류: {error_msg}")
-        return None
+        # 다운로드한 엑셀 파일 읽기
+        df_income = pd.read_excel(file_stream, sheet_name='헌금수입')
+        df_target = pd.read_excel(file_stream, sheet_name='작정액')
+        return df_income, df_target
+    except Exception as e:
+        st.error(f"데이터 로드 중 오류 발생: {e}")
+        return None, None
 
-# --- 4. 데이터 계산 로직 (VBA 로직 재현) ---
+# --- 3. 데이터 계산 로직 (기존 VBA와 동일) ---
 def calculate_details(user_name, df_income, df_target, start_year=2026):
     user_info = df_target[df_target.iloc[:, 0].astype(str).str.strip() == user_name]
     if user_info.empty: return None
@@ -80,23 +69,15 @@ def calculate_details(user_name, df_income, df_target, start_year=2026):
             if 1 <= m <= 12: alloc[m], lab[m] = monthly_paid[pm], f"{pm[-2:]}월납"
     return {"name": user_name, "commit": monthly_commit, "alloc": alloc[1:], "labs": lab[1:], "total": sum(monthly_paid.values())}
 
-# --- 5. 앱 화면 구성 ---
+# --- 4. 앱 화면 구성 ---
 st.set_page_config(page_title="2026 선교헌금 관리", layout="wide")
-st.title("⛪ 2026 선교헌금 실시간 관리")
+st.title("⛪ 2026 선교헌금 실시간 관리 (구글 연동)")
 
-if 'df_income' not in st.session_state:
-    with st.spinner('OneDrive에서 데이터를 불러오고 있습니다...'):
-        file_bytes = download_excel_from_onedrive()
-        if file_bytes:
-            st.session_state.df_income = pd.read_excel(file_bytes, sheet_name='헌금수입')
-            st.session_state.df_target = pd.read_excel(file_bytes, sheet_name='작정액')
-            st.success("데이터 로드 완료!")
-        else:
-            st.error(f"OneDrive에서 '{FILE_NAME}' 파일을 찾을 수 없습니다.")
+with st.spinner('구글 드라이브에서 엑셀 파일을 불러오고 있습니다...'):
+    df_income, df_target = load_data(FILE_ID)
 
-if 'df_income' in st.session_state:
+if df_income is not None and df_target is not None:
     menu = st.sidebar.radio("메뉴", ["🔍 개인별 조회", "🖨️ 전체 집계표"])
-    df_income, df_target = st.session_state.df_income, st.session_state.df_target
 
     if menu == "🔍 개인별 조회":
         names = df_target.iloc[2:, 0].dropna().unique().tolist()
