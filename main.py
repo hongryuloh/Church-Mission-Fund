@@ -43,8 +43,11 @@ def calculate_details(user_name, df_income, df_target, start_year=2026):
     if user_info.empty: return None
     monthly_commit = float(user_info.iloc[0, 2])
     user_income = df_income[df_income.iloc[:, 2].astype(str).str.strip() == user_name].copy()
+    
+    # 수정된 부분: 그룹화할 때 iloc 대신 열(Column) 이름을 직접 추출하여 사용합니다.
     user_income['YYYYMM_STR'] = user_income.iloc[:, 1].astype(str).str.strip()
-    monthly_paid = user_income.groupby('YYYYMM_STR').iloc[:, 3].sum().to_dict()
+    amt_col_name = user_income.columns[3] # 4번째 열(금액)의 이름
+    monthly_paid = user_income.groupby('YYYYMM_STR')[amt_col_name].sum().to_dict()
     
     alloc, lab = [0.0]*13, [""]*13
     sorted_months = sorted([m for m in monthly_paid.keys() if m.startswith(str(start_year))])
