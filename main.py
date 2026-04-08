@@ -43,8 +43,7 @@ def load_data(file_id):
                     df_expense = df_expense[1:].reset_index(drop=True)
                 cols = ['일자', '항목', '금액', '비고']
                 current_cols = len(df_expense.columns)
-                if current_cols < 4: cols = cols[:current_cols]
-                df_expense.columns = cols + list(df_expense.columns)[len(cols):]
+                df_expense.columns = cols[:current_cols] + list(df_expense.columns)[current_cols:]
         except:
             df_expense = pd.DataFrame(columns=['일자', '항목', '금액', '비고'])
             
@@ -75,7 +74,6 @@ def append_row_to_excel(raw_excel, sheet_name, row_data):
     wb.save(output)
     return output.getvalue()
 
-# --- 날짜 형식 통일 함수 ---
 def format_date_str(x):
     if pd.isna(x): return ""
     if isinstance(x, pd.Timestamp) or hasattr(x, 'strftime'):
@@ -83,26 +81,23 @@ def format_date_str(x):
     x_str = str(x).strip().split(' ')[0].replace('.0', '')
     if len(x_str) == 8 and x_str.isdigit():
         return f"{x_str[:4]}-{x_str[4:6]}-{x_str[6:8]}"
+    if len(x_str) == 6 and x_str.isdigit():
+        return f"{x_str[:4]}-{x_str[4:6]}-01"
     return x_str
 
 # --- 3. 데이터 계산 로직 ---
 def calculate_details(user_name, df_income, df_target, start_year=2026):
-    # C열(index 2)이 이름
     user_info = df_target[df_target.iloc[:, 0].astype(str).str.strip() == user_name]
     if user_info.empty: return None
     
-    # 작정액 (C열 index 2)
     monthly_commit = user_info.iloc[0, 2]
     monthly_commit = float(monthly_commit) if pd.notna(monthly_commit) else 0.0
     
-    # 헌금수입에서 이름 찾기 (C열 index 2)
     user_income = df_income[df_income.iloc[:, 2].astype(str).str.strip() == user_name].copy()
-    
-    # 내부 계산용 YYYYMM 추출 (B열 index 1 사용)
     user_income['YYYYMM_STR'] = user_income.iloc[:, 1].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
     
-    # 금액 (D열 index 3)
-    monthly_paid = user_income.groupby('YYYYMM_STR').iloc[:, 3].sum().to_dict()
+    # 금액 합계 계산 (iloc 대신 열 인덱스 3 사용)
+    monthly_paid = user_income.groupby('YYYYMM_STR').apply(lambda x: x.iloc[:, 3].sum()).to_dict()
     
     alloc, lab = [0.0]*13, [""]*13
     sorted_months = sorted([m for m in monthly_paid.keys() if m.startswith(str(start_year))])
@@ -136,10 +131,8 @@ def generate_summary_excel(df_income, df_target, raw_excel, start_year=2026):
     wb = openpyxl.load_workbook(io.BytesIO(raw_excel))
     sheet_name = '개인별 집계'
     if sheet_name in wb.sheetnames:
-        ws = wb[sheet_name]
-        ws.delete_rows(1, ws.max_row) 
-    else:
-        ws = wb.create_sheet(sheet_name)
+        ws = wb[sheet_name]; ws.delete_rows(1, ws.max_row) 
+    else: ws = wb.create_sheet(sheet_name)
     headers = ["성명", "작정액", "1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월", "총납부액", "잔액"]
     ws.append(headers)
     thin_border, header_fill = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin')), PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
@@ -158,10 +151,7 @@ def generate_summary_excel(df_income, df_target, raw_excel, start_year=2026):
                 else: cell.number_format = '#,##0' 
     ws.column_dimensions['A'].width = 12
     for col in ['B', 'O', 'P']: ws.column_dimensions[col].width = 14
-    for c in ['C','D','E','F','G','H','I','J','K','L','M','N']: ws.column_dimensions[c].width = 11
-    output = io.BytesIO()
-    wb.save(output)
-    return output.getvalue()
+    output = io.BytesIO(); wb.save(output); return output.getvalue()
 
 # --- 5. 앱 화면 구성 ---
 st.set_page_config(page_title="2026 선교헌금 관리", layout="wide")
@@ -200,9 +190,12 @@ if df_income is not None:
         with tab1: # 헌금 수입
             if not st.session_state.add_mode_inc:
                 st.write("🔹 최근 헌금 수입 내역")
-                # A열(0), C열(2), D열(3), E열(4) 선택
-                display_inc = df_income.iloc[1:, [0, 2, 3, 4]].copy()
-                display_inc.columns = ['헌금일자', '성명', '금액', '비고']
+                # [에러 수정] 열 개수에 맞춰 유동적으로 인덱스 선택
+                cols_to_show = [0, 2, 3] # 날짜, 이름, 금액은 필수
+                if len(df_income.columns) >= 5: cols_to_show.append(4) # 비고가 있으면 포함
+                
+                display_inc = df_income.iloc[1:, cols_to_show].copy()
+                display_inc.columns = ['헌금일자', '성명', '금액', '비고'][:len(cols_to_show)]
                 display_inc['헌금일자'] = display_inc['헌금일자'].apply(format_date_str)
                 display_inc['금액'] = pd.to_numeric(display_inc['금액'], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
                 st.dataframe(display_inc.dropna(subset=['성명']), use_container_width=True, hide_index=True)
@@ -213,11 +206,9 @@ if df_income is not None:
                     target_data = df_target.iloc[1:, 0:2].copy()
                     target_data.columns = ['N', 'P']
                     options = [f"{r['N']} ({r['P']})" if r['P'] and str(r['P'])!='nan' else str(r['N']) for _, r in target_data.iterrows() if str(r['N'])!='nan']
-                    sel = st.selectbox("성명 선택", options)
-                    note = st.text_input("비고")
+                    sel = st.selectbox("성명 선택", options); note = st.text_input("비고")
                     if st.form_submit_button("저장") and sel and amt > 0:
                         real_n = sel.split(" (")[0]
-                        # 저장 구조: A:날짜(yyyy-mm-dd), B:년월(yyyymm), C:성명, D:금액, E:비고
                         new = [d.strftime("%Y-%m-%d"), d.strftime("%Y%m"), real_n, amt, note]
                         if save_to_drive(FILE_ID, append_row_to_excel(raw_excel, '헌금수입', new)):
                             st.session_state.add_mode_inc = False; st.rerun()
@@ -227,8 +218,9 @@ if df_income is not None:
             if not st.session_state.add_mode_exp:
                 st.write("🔹 지출 내역")
                 display_exp = df_expense.copy()
-                display_exp['일자'] = display_exp['일자'].apply(format_date_str)
-                display_exp['금액'] = pd.to_numeric(display_exp['금액'], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
+                if '일자' in display_exp.columns: display_exp['일자'] = display_exp['일자'].apply(format_date_str)
+                if '금액' in display_exp.columns:
+                    display_exp['금액'] = pd.to_numeric(display_exp['금액'], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
                 st.dataframe(display_exp, use_container_width=True, hide_index=True)
                 if st.button("➕ 신규 지출 등록"): st.session_state.add_mode_exp = True; st.rerun()
             else:
@@ -258,7 +250,7 @@ if df_income is not None:
     elif menu == "📊 결산 및 통계":
         st.subheader("📊 재정 결산 및 통계")
         total_inc = pd.to_numeric(df_income.iloc[1:, 3], errors='coerce').sum()
-        total_exp = pd.to_numeric(df_expense['금액'], errors='coerce').sum() if not df_expense.empty else 0
+        total_exp = pd.to_numeric(df_expense['금액'], errors='coerce').sum() if not df_expense.empty and '금액' in df_expense.columns else 0
         c1, c2, c3 = st.columns(3)
         c1.metric("총 헌금 수입", f"{int(total_inc):,} 원"); c2.metric("총 지출액", f"{int(total_exp):,} 원"); c3.metric("현재 잔액", f"{int(total_inc - total_exp):,} 원")
         st.divider(); st.write("최근 헌금 5건")
