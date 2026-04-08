@@ -19,19 +19,36 @@ def get_access_token():
     result = app.acquire_token_for_client(scopes=SCOPE)
     return result.get("access_token")
 
-# --- 3. OneDrive에서 엑셀 파일 다운로드 함수 ---
+# --- 3. OneDrive에서 엑셀 파일 다운로드 함수 (경로 지정 버전) ---
 def download_excel_from_onedrive():
     token = get_access_token()
+    if not token:
+        st.error("토큰을 가져오지 못했습니다. Azure 설정을 확인하세요.")
+        return None
+        
     headers = {'Authorization': f'Bearer {token}'}
-    # 파일명으로 검색하여 다운로드 URL 가져오기
-    search_url = f"https://graph.microsoft.com/v1.0/me/drive/root/search(q='{FILE_NAME}')"
-    response = requests.get(search_url, headers=headers).json()
     
-    if 'value' in response and len(response['value']) > 0:
-        download_url = response['value'][0]['@microsoft.graph.downloadUrl']
+    # 사용자가 알려주신 폴더 경로와 파일명
+    # 경로: wooridongnaechurch / kimhyuncheol - 2026 / 2026 선교헌금집계.xlsx
+    folder_path = "wooridongnaechurch/kimhyuncheol - 2026"
+    file_name = "2026 선교헌금집계.xlsx"
+    
+    # Microsoft Graph API 경로 방식 URL (공백은 자동으로 처리됨)
+    url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{folder_path}/{file_name}"
+    
+    response = requests.get(url, headers=headers)
+    res_json = response.json()
+    
+    if '@microsoft.graph.downloadUrl' in res_json:
+        download_url = res_json['@microsoft.graph.downloadUrl']
         file_content = requests.get(download_url).content
         return io.BytesIO(file_content)
-    return None
+    else:
+        # 에러 메시지 상세 출력 (디버깅용)
+        error_msg = res_json.get('error', {}).get('message', '파일을 찾을 수 없습니다.')
+        st.error(f"OneDrive 오류: {error_msg}")
+        st.info(f"찾으려는 경로: {folder_path}/{file_name}")
+        return None
 
 # --- 4. 데이터 계산 로직 (VBA 로직 재현) ---
 def calculate_details(user_name, df_income, df_target, start_year=2026):
