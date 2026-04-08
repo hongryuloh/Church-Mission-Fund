@@ -7,7 +7,6 @@ from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
-from datetime import datetime
 
 # --- 1. 보안 설정 ---
 FILE_ID = st.secrets["google"]["file_id"]
@@ -70,6 +69,13 @@ def append_row_to_excel(raw_excel, sheet_name, row_data):
     wb.save(output)
     return output.getvalue()
 
+# --- 날짜 형식 통일 함수 (화면 출력용) ---
+def format_date_str(x):
+    x_str = str(x).split(' ')[0].replace('.0', '') # 시간(00:00:00)이나 소수점 제거
+    if len(x_str) == 6 and x_str.isdigit(): 
+        return f"{x_str[:4]}-{x_str[4:6]}-01" # 과거 YYYYMM 데이터를 YYYY-MM-01로 변환
+    return x_str
+
 # --- 3. 데이터 계산 로직 ---
 def calculate_details(user_name, df_income, df_target, start_year=2026):
     user_info = df_target[df_target.iloc[:, 0].astype(str).str.strip() == user_name]
@@ -79,7 +85,10 @@ def calculate_details(user_name, df_income, df_target, start_year=2026):
     monthly_commit = float(monthly_commit) if pd.notna(monthly_commit) else 0.0
     
     user_income = df_income[df_income.iloc[:, 2].astype(str).str.strip() == user_name].copy()
-    user_income['YYYYMM_STR'] = user_income.iloc[:, 1].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+    
+    # [수정됨] 일자(yyyy-mm-dd)를 입력해도 월별 집계를 위해 YYYYMM 형식으로 앞 6자리만 안전하게 추출하는 로직
+    user_income['YYYYMM_STR'] = user_income.iloc[:, 1].astype(str).str.replace(r'\.0$', '', regex=True).str.split(' ').str[0].str.replace('-', '', regex=False).str[:6]
+    
     amt_col_name = user_income.columns[3] 
     monthly_paid = user_income.groupby('YYYYMM_STR')[amt_col_name].sum().to_dict()
     
@@ -162,7 +171,6 @@ def generate_summary_excel(df_income, df_target, raw_excel, start_year=2026):
 st.set_page_config(page_title="2026 선교헌금 관리", layout="wide")
 st.title("⛪ 2026 선교헌금 관리 시스템")
 
-# 세션 상태 초기화 (입력/조회 모드 전환용)
 for key in ['add_mode_tgt', 'add_mode_inc', 'add_mode_exp']:
     if key not in st.session_state:
         st.session_state[key] = False
@@ -204,10 +212,11 @@ if df_income is not None:
                 st.write("🔹 최근 헌금 수입 내역")
                 display_inc = df_income.iloc[1:, [1,2,3,4]].copy() if len(df_income.columns) >= 5 else df_income.iloc[1:, [1,2,3]].copy()
                 cols_count = len(display_inc.columns)
-                if cols_count == 4: display_inc.columns = ['헌금월', '성명', '금액', '비고']
-                elif cols_count == 3: display_inc.columns = ['헌금월', '성명', '금액']
+                if cols_count == 4: display_inc.columns = ['헌금일자', '성명', '금액', '비고']
+                elif cols_count == 3: display_inc.columns = ['헌금일자', '성명', '금액']
                 
                 display_inc = display_inc.dropna(subset=['성명'])
+                display_inc['헌금일자'] = display_inc['헌금일자'].apply(format_date_str) # 일자 포맷 적용
                 display_inc['금액'] = pd.to_numeric(display_inc['금액'], errors='coerce').fillna(0)
                 display_inc['금액'] = display_inc['금액'].apply(lambda x: f"{int(x):,} 원")
                 st.dataframe(display_inc, use_container_width=True, hide_index=True)
@@ -221,7 +230,6 @@ if df_income is not None:
                     col1, col2 = st.columns(2)
                     inc_date = col1.date_input("입금일자")
                     
-                    # 작정액 명단에서 성명(직분) 리스트 만들기
                     target_data = df_target.iloc[1:, 0:2].copy()
                     target_data.columns = ['Name', 'Position']
                     target_data['Name'] = target_data['Name'].astype(str).str.strip()
@@ -236,15 +244,15 @@ if df_income is not None:
                     
                     c1, c2 = st.columns(2)
                     submitted1 = c1.form_submit_button("저장하기")
-                    cancel1 = c2.form_submit_button("취소")
+                    cancel1 = c2.form_submit_button("목록(조회화면)으로 돌아가기") # 버튼 이름 변경
                     
                     if submitted1 and selected_name_pos and inc_amt > 0:
-                        yyyymm = inc_date.strftime("%Y%m")
+                        # [수정됨] 엑셀에 yyyy-mm-dd 형태로 저장
+                        yyyymmdd = inc_date.strftime("%Y-%m-%d") 
                         real_name = selected_name_pos.split(" (")[0]
                         real_pos = selected_name_pos.split(" (")[1][:-1] if " (" in selected_name_pos else ""
                         
-                        # 엑셀 원본 보호를 위해 빈칸, 헌금월, 성명, 금액, 비고, (추가)직분 순으로 저장
-                        new_row = ["", yyyymm, real_name, inc_amt, inc_note, real_pos] 
+                        new_row = ["", yyyymmdd, real_name, inc_amt, inc_note, real_pos] 
                         with st.spinner("저장 중..."):
                             updated_excel = append_row_to_excel(raw_excel, '헌금수입', new_row)
                             if save_to_drive(FILE_ID, updated_excel):
@@ -261,6 +269,7 @@ if df_income is not None:
                 st.write("🔹 지출 내역")
                 if not df_expense.empty:
                     display_exp = df_expense.copy()
+                    display_exp['일자'] = display_exp['일자'].apply(format_date_str) # 일자 포맷 적용
                     display_exp['금액'] = pd.to_numeric(display_exp['금액'], errors='coerce').fillna(0)
                     display_exp['금액'] = display_exp['금액'].apply(lambda x: f"{int(x):,} 원")
                     st.dataframe(display_exp, use_container_width=True, hide_index=True)
@@ -281,7 +290,7 @@ if df_income is not None:
                     
                     c1, c2 = st.columns(2)
                     submitted2 = c1.form_submit_button("저장하기")
-                    cancel2 = c2.form_submit_button("취소")
+                    cancel2 = c2.form_submit_button("목록(조회화면)으로 돌아가기") # 버튼 이름 변경
                     
                     if submitted2 and exp_item and exp_amt > 0:
                         new_row = [exp_date.strftime("%Y-%m-%d"), exp_item, exp_amt, exp_note]
@@ -319,7 +328,7 @@ if df_income is not None:
                     
                     c1, c2 = st.columns(2)
                     save_btn = c1.form_submit_button("저장하기")
-                    cancel_btn = c2.form_submit_button("취소")
+                    cancel_btn = c2.form_submit_button("목록(조회화면)으로 돌아가기") # 버튼 이름 변경
                     
                     if save_btn and new_name and new_amt > 0:
                         new_row = [new_name, new_pos, new_amt]
@@ -349,7 +358,8 @@ if df_income is not None:
         st.write("주단위 헌금 집계 (최근 5건)")
         
         display_recent = df_income.tail(5).iloc[:, [1,2,3]].copy()
-        display_recent.columns = ['헌금월', '성명', '금액']
+        display_recent.columns = ['헌금일자', '성명', '금액']
+        display_recent['헌금일자'] = display_recent['헌금일자'].apply(format_date_str) # 일자 포맷 적용
         display_recent['금액'] = pd.to_numeric(display_recent['금액'], errors='coerce').fillna(0)
         display_recent['금액'] = display_recent['금액'].apply(lambda x: f"{int(x):,} 원")
         st.dataframe(display_recent, use_container_width=True, hide_index=True)
