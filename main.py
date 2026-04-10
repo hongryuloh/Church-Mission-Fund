@@ -107,7 +107,6 @@ if "current_user" not in st.session_state:
 
 # (2) 로그인 화면 구성
 if not st.session_state["authenticated"]:
-    # 좌우 여백을 최소화하여 제목 공간 확보
     col1, col2, col3 = st.columns([0.1, 3, 0.1]) 
     with col2:
         st.title(f"⛪ {TARGET_YEAR} 선교헌금 관리")
@@ -405,23 +404,33 @@ if df_income is not None:
                     st.markdown('</div>', unsafe_allow_html=True)
                     
             elif st.session_state.mode_inc == 'add':
+                # 신규 수입 입력: 순서를 일자 -> 이름 -> 금액 -> 비고 순으로 변경
                 with st.form("inc_add"):
-                    d, amt = st.date_input("입금일자"), st.number_input("금액", min_value=0, step=10000)
+                    d = st.date_input("입금일자")
                     opts = [f"{r[t_n]} ({r[t_p]})" if pd.notna(r.get(t_p)) else str(r.get(t_n)) for _, r in df_target.iterrows() if pd.notna(r.get(t_n)) and r.get(t_n)!='합계']
-                    sel, note = st.selectbox("이름 선택", opts), st.text_input("비고")
+                    sel = st.selectbox("이름 선택", opts)
+                    amt = st.number_input("금액", min_value=0, step=10000)
+                    note = st.text_input("비고")
+                    
                     if st.form_submit_button("저장"):
                         if save_to_drive(FILE_ID, append_dict_to_excel(raw_excel, '헌금수입', {'날짜': d.strftime("%Y-%m-%d"), i_y: d.strftime("%Y%m"), i_n: sel.split(" (")[0], i_a: amt, '비고': note})):
                             st.session_state.mode_inc = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_inc = None; st.rerun()
+                    
             elif st.session_state.mode_inc == 'edit':
+                # 수정 화면도 순서를 맞춤
                 curr = df_income.iloc[st.session_state.edit_idx_inc]
                 with st.form("inc_edit"):
                     new_d = st.date_input("날짜", value=pd.to_datetime(curr.get('날짜', datetime.now())) if pd.notna(curr.get('날짜')) else datetime.now())
-                    new_n, new_a, new_b = st.text_input("이름", value=str(curr.get(i_n, ''))), st.number_input("금액", value=int(pd.to_numeric(curr.get(i_a, 0), errors='coerce') or 0), step=10000), st.text_input("비고", value=str(curr.get('비고', '')) if pd.notna(curr.get('비고')) else "")
+                    new_n = st.text_input("이름", value=str(curr.get(i_n, '')))
+                    new_a = st.number_input("금액", value=int(pd.to_numeric(curr.get(i_a, 0), errors='coerce') or 0), step=10000)
+                    new_b = st.text_input("비고", value=str(curr.get('비고', '')) if pd.notna(curr.get('비고')) else "")
+                    
                     if st.form_submit_button("✅ 수정 완료"):
                         df_income.loc[df_income.index[st.session_state.edit_idx_inc], ['날짜', i_y, i_n, i_a, '비고']] = [new_d.strftime("%Y-%m-%d"), new_d.strftime("%Y%m"), new_n, new_a, new_b]
                         if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '헌금수입', df_income)): st.session_state.mode_inc = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_inc = None; st.rerun()
+                    
             elif st.session_state.mode_inc == 'delete_check':
                 st.warning(f"⚠️ {st.session_state.edit_idx_inc}번 행 데이터를 삭제하시겠습니까?")
                 if st.button("🔴 삭제 실행", use_container_width=True):
@@ -452,21 +461,56 @@ if df_income is not None:
                     st.markdown('</div>', unsafe_allow_html=True)
 
             elif st.session_state.mode_exp == 'add':
+                # 신규 지출 항목 (기존 항목 리스트에서 선택 기능 추가)
                 with st.form("exp_add"):
-                    d, item, amt, note = st.date_input("지출일자"), st.text_input("지출항목"), st.number_input("금액", min_value=0, step=10000), st.text_input("비고")
+                    d = st.date_input("지출일자")
+                    
+                    # 기존 엑셀에 저장된 지출내역 중 중복 제거 (비어있는 값 제외)
+                    existing_items = sorted(list(set([str(x).strip() for x in df_expense.get('내역', []) if pd.notna(x) and str(x).strip()])))
+                    exp_opts = existing_items + ["➕ 직접 입력 (아래 빈칸에 작성)"]
+                    
+                    sel_item = st.selectbox("지출항목 선택", exp_opts)
+                    custom_item = st.text_input("새 지출항목 (위에서 '직접 입력' 선택 시)")
+                    
+                    amt = st.number_input("금액", min_value=0, step=10000)
+                    note = st.text_input("비고")
+                    
                     if st.form_submit_button("저장"):
-                        if save_to_drive(FILE_ID, append_dict_to_excel(raw_excel, '지출', {'날짜': d.strftime("%Y-%m-%d"), '년월': d.strftime("%Y%m"), '내역': item, '금액': amt, '비고': note})):
-                            st.session_state.mode_exp = None; st.rerun()
+                        # '직접 입력'을 골랐다면 텍스트 박스의 값을, 아니면 선택한 값을 사용
+                        final_item = custom_item.strip() if sel_item.startswith("➕") else sel_item
+                        if not final_item:
+                            st.error("지출항목을 기재해 주세요.")
+                        else:
+                            if save_to_drive(FILE_ID, append_dict_to_excel(raw_excel, '지출', {'날짜': d.strftime("%Y-%m-%d"), '년월': d.strftime("%Y%m"), '내역': final_item, '금액': amt, '비고': note})):
+                                st.session_state.mode_exp = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_exp = None; st.rerun()
+                    
             elif st.session_state.mode_exp == 'edit':
                 curr = df_expense.iloc[st.session_state.edit_idx_exp]
                 with st.form("exp_edit"):
                     new_d = st.date_input("날짜", value=pd.to_datetime(curr.get('날짜', datetime.now())) if pd.notna(curr.get('날짜')) else datetime.now())
-                    new_i, new_a, new_b = st.text_input("내역", value=str(curr.get('내역', ''))), st.number_input("금액", value=int(pd.to_numeric(curr.get('금액', 0), errors='coerce') or 0), step=10000), st.text_input("비고", value=str(curr.get('비고', '')) if pd.notna(curr.get('비고')) else "")
+                    
+                    # 수정 시에도 기존 항목 리스트 활용
+                    curr_item = str(curr.get('내역', '')).strip()
+                    existing_items = sorted(list(set([str(x).strip() for x in df_expense.get('내역', []) if pd.notna(x) and str(x).strip()])))
+                    exp_opts = existing_items + ["➕ 직접 입력 (아래 빈칸에 작성)"]
+                    default_idx = exp_opts.index(curr_item) if curr_item in exp_opts else len(exp_opts)-1
+                    
+                    sel_item = st.selectbox("지출항목 선택", exp_opts, index=default_idx)
+                    custom_item = st.text_input("새 지출항목 (위에서 '직접 입력' 선택 시)", value=curr_item if default_idx == len(exp_opts)-1 else "")
+                    
+                    new_a = st.number_input("금액", value=int(pd.to_numeric(curr.get('금액', 0), errors='coerce') or 0), step=10000)
+                    new_b = st.text_input("비고", value=str(curr.get('비고', '')) if pd.notna(curr.get('비고')) else "")
+                    
                     if st.form_submit_button("✅ 수정 완료"):
-                        df_expense.loc[df_expense.index[st.session_state.edit_idx_exp], ['날짜', '년월', '내역', '금액', '비고']] = [new_d.strftime("%Y-%m-%d"), new_d.strftime("%Y%m"), new_i, new_a, new_b]
-                        if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '지출', df_expense)): st.session_state.mode_exp = None; st.rerun()
+                        final_item = custom_item.strip() if sel_item.startswith("➕") else sel_item
+                        if not final_item:
+                            st.error("지출항목을 기재해 주세요.")
+                        else:
+                            df_expense.loc[df_expense.index[st.session_state.edit_idx_exp], ['날짜', '년월', '내역', '금액', '비고']] = [new_d.strftime("%Y-%m-%d"), new_d.strftime("%Y%m"), final_item, new_a, new_b]
+                            if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '지출', df_expense)): st.session_state.mode_exp = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_exp = None; st.rerun()
+                    
             elif st.session_state.mode_exp == 'delete_check':
                 if st.button("🔴 지출 삭제 실행", use_container_width=True):
                     df_expense = df_expense.drop(df_expense.index[st.session_state.edit_idx_exp])
