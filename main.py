@@ -38,7 +38,7 @@ def format_date_str(x):
     if len(x_str) == 6 and x_str.isdigit(): return f"{x_str[:4]}-{x_str[4:6]}-01"
     return x_str
 
-# --- 2. 구글 드라이브 데이터 로드 함수 ---
+# --- 2. 데이터 로드 ---
 @st.cache_data(ttl=60) 
 def load_data(file_id):
     try:
@@ -130,7 +130,7 @@ def append_dict_to_excel(raw_excel, sheet_name, row_dict):
         ws.cell(row=target_row, column=header_map[key], value=val)
     output = io.BytesIO(); wb.save(output); return output.getvalue()
 
-# --- 3. 데이터 계산 로직 (폭포수 방식 vs 다이렉트 지정월 매칭 완벽 구현) ---
+# --- 3. 데이터 계산 ---
 def calculate_details(user_name, df_income, df_target, start_year=2026):
     t_n = get_col(df_target, ['이름', '성명'], 0)
     t_a = get_col(df_target, ['월별 작정액', '작정액'], 2)
@@ -154,7 +154,6 @@ def calculate_details(user_name, df_income, df_target, start_year=2026):
     alloc, lab = [0.0]*13, [""]*13
     sorted_m = sorted([m for m in paid.keys() if str(m).startswith(str(start_year))])
     
-    # [핵심 로직] 작정액이 있으면 '폭포수', 없으면 '지정월' 다이렉트 맵핑
     if commit > 0:
         ptr = 1
         for pm in sorted_m:
@@ -179,15 +178,20 @@ def calculate_details(user_name, df_income, df_target, start_year=2026):
             
     return {"name": user_name, "commit": commit, "alloc": alloc[1:], "labs": lab[1:], "total": total_donated}
 
-# --- 4. 템플릿 완벽 재현 엑셀 생성 (4명 1페이지 & 절취선 추가) ---
+# --- 4. 인쇄 포맷 완벽 재현 (1장 가로 4명 2x2 구조) ---
 def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
     wb = openpyxl.Workbook() 
     ws = wb.active
     ws.title = "개인별 헌금내역"
 
+    # [가로 양식 세팅] 왼쪽 사람(A~H), 중앙 여백(I), 오른쪽 사람(J~Q)
     ws.column_dimensions['A'].width = 11
     ws.column_dimensions['B'].width = 11
-    for c in ['C','D','E','F','G','H']: ws.column_dimensions[c].width = 12.5
+    for c in ['C','D','E','F','G','H']: ws.column_dimensions[c].width = 12
+    ws.column_dimensions['I'].width = 3 # 가운데 세로 절취선 여백
+    ws.column_dimensions['J'].width = 11
+    ws.column_dimensions['K'].width = 11
+    for c in ['L','M','N','O','P','Q']: ws.column_dimensions[c].width = 12
 
     thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     center_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
@@ -207,73 +211,83 @@ def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
         res = calculate_details(name, df_income, df_target, start_year)
         if not res: continue
         
-        user_count += 1
-        r = current_row
+        # 왼쪽 사람은 offset 0, 오른쪽 사람은 offset 9 (J열부터 시작)
+        c_off = 0 if user_count % 2 == 0 else 9
+        r = current_row 
         
-        # 1. 제목 (높이를 넓게 줘서 여유 있게)
-        ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=8)
-        title = ws.cell(row=r, column=2, value="2026년 선교헌금 작정 및 헌금내역")
-        title.font = Font(size=18, bold=True, underline="single"); title.alignment = center_align
-        ws.row_dimensions[r].height = 30
+        # 1. 제목
+        ws.merge_cells(start_row=r, start_column=2+c_off, end_row=r, end_column=8+c_off)
+        title = ws.cell(row=r, column=2+c_off, value="2026년 선교헌금 작정 및 헌금내역")
+        title.font = Font(size=16, bold=True, underline="single"); title.alignment = center_align
+        ws.row_dimensions[r].height = 25
         
         # 2. 날짜 및 합계
-        ws.merge_cells(start_row=r+1, start_column=1, end_row=r+1, end_column=3)
-        ws.cell(row=r+1, column=1, value=f"({today_str} 기준)").font = Font(bold=True)
-        ws.merge_cells(start_row=r+1, start_column=5, end_row=r+1, end_column=6)
-        ws.cell(row=r+1, column=5, value="선교헌금 합계 :").alignment = right_align
-        ws.merge_cells(start_row=r+1, start_column=7, end_row=r+1, end_column=8)
-        t_c = ws.cell(row=r+1, column=7, value=res['total'])
+        ws.merge_cells(start_row=r+1, start_column=1+c_off, end_row=r+1, end_column=3+c_off)
+        ws.cell(row=r+1, column=1+c_off, value=f"({today_str} 기준)").font = Font(bold=True)
+        ws.merge_cells(start_row=r+1, start_column=5+c_off, end_row=r+1, end_column=6+c_off)
+        ws.cell(row=r+1, column=5+c_off, value="선교헌금 합계 :").alignment = right_align
+        ws.merge_cells(start_row=r+1, start_column=7+c_off, end_row=r+1, end_column=8+c_off)
+        t_c = ws.cell(row=r+1, column=7+c_off, value=res['total'])
         t_c.font = Font(bold=True); t_c.number_format = '#,##0'; t_c.alignment = center_align
         
         # 표 테두리 세팅
         for row_i in range(r+2, r+8):
-            for col_i in range(1, 9):
+            for col_i in range(1+c_off, 9+c_off):
                 c = ws.cell(row=row_i, column=col_i)
                 c.border = thin_border; c.alignment = center_align
 
         # 3. 헤더
-        ws.cell(row=r+2, column=1, value="이름").font = Font(bold=True)
-        ws.cell(row=r+2, column=2, value="월작정액").font = Font(bold=True)
-        for i, m in enumerate(["01", "02", "03", "04", "05", "06"], 3): ws.cell(row=r+2, column=i, value=m).font = Font(bold=True)
-        for i, m in enumerate(["07", "08", "09", "10", "11", "12"], 3): ws.cell(row=r+5, column=i, value=m).font = Font(bold=True)
+        ws.cell(row=r+2, column=1+c_off, value="이름").font = Font(bold=True)
+        ws.cell(row=r+2, column=2+c_off, value="월작정액").font = Font(bold=True)
+        for i, m in enumerate(["01", "02", "03", "04", "05", "06"], 3): ws.cell(row=r+2, column=i+c_off, value=m).font = Font(bold=True)
+        for i, m in enumerate(["07", "08", "09", "10", "11", "12"], 3): ws.cell(row=r+5, column=i+c_off, value=m).font = Font(bold=True)
 
         # 4. 이름/직분 및 월작정액 병합
-        ws.merge_cells(start_row=r+3, start_column=1, end_row=r+7, end_column=1)
-        ws.cell(row=r+3, column=1, value=f"{name}\n{pos}").font = Font(bold=True)
-        ws.merge_cells(start_row=r+3, start_column=2, end_row=r+7, end_column=2)
+        ws.merge_cells(start_row=r+3, start_column=1+c_off, end_row=r+7, end_column=1+c_off)
+        ws.cell(row=r+3, column=1+c_off, value=f"{name}\n{pos}").font = Font(bold=True)
+        ws.merge_cells(start_row=r+3, start_column=2+c_off, end_row=r+7, end_column=2+c_off)
         c_val = res['commit']
-        cc = ws.cell(row=r+3, column=2, value=c_val if c_val > 0 else "-")
+        cc = ws.cell(row=r+3, column=2+c_off, value=c_val if c_val > 0 else "-")
         if c_val > 0: cc.number_format = '#,##0'
 
         # 5. 데이터 채우기
         for i in range(6):
-            ws.cell(row=r+3, column=i+3, value=res['labs'][i])
+            ws.cell(row=r+3, column=i+3+c_off, value=res['labs'][i])
             amt1 = res['alloc'][i]
-            c1 = ws.cell(row=r+4, column=i+3, value=amt1 if amt1 > 0 else "")
+            c1 = ws.cell(row=r+4, column=i+3+c_off, value=amt1 if amt1 > 0 else "")
             if amt1 > 0: c1.number_format = '#,##0'
             
-            ws.cell(row=r+6, column=i+3, value=res['labs'][i+6])
+            ws.cell(row=r+6, column=i+3+c_off, value=res['labs'][i+6])
             amt2 = res['alloc'][i+6]
-            c2 = ws.cell(row=r+7, column=i+3, value=amt2 if amt2 > 0 else "")
+            c2 = ws.cell(row=r+7, column=i+3+c_off, value=amt2 if amt2 > 0 else "")
             if amt2 > 0: c2.number_format = '#,##0'
 
         # 6. 꼬리말
-        ws.merge_cells(start_row=r+8, start_column=2, end_row=r+8, end_column=8)
-        ws.cell(row=r+8, column=2, value="선교헌금에 관심가져주셔서 감사합니다.").alignment = center_align
+        ws.merge_cells(start_row=r+8, start_column=2+c_off, end_row=r+8, end_column=8+c_off)
+        ws.cell(row=r+8, column=2+c_off, value="선교헌금에 관심가져주셔서 감사합니다.").alignment = center_align
 
-        # 7. 절취선 (점선) 추가
-        ws.merge_cells(start_row=r+10, start_column=1, end_row=r+10, end_column=8)
-        cut_line = ws.cell(row=r+10, column=1, value="- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -")
-        cut_line.alignment = center_align
-        cut_line.font = Font(color="888888") # 회색으로 연하게
-        
-        # 1페이지에 4명 맞춤 설정 (페이지 나누기)
-        current_row += 12
-        if user_count % 4 == 0:
-            ws.row_breaks.append(Break(id=current_row - 1))
+        # [핵심] 가로 2명 배치가 끝나면 절취선을 그리고 다음 줄로 이동
+        if user_count % 2 == 1 or user_count == len(print_users) - 1:
+            ws.merge_cells(start_row=r+10, start_column=1, end_row=r+10, end_column=17)
+            cut_line = ws.cell(row=r+10, column=1, value="- - - - - - - - - - - - - - - - - - - - - - - - - - ✂ (절취선) ✂ - - - - - - - - - - - - - - - - - - - - - - - - - -")
+            cut_line.alignment = Alignment(horizontal='center', vertical='center')
+            cut_line.font = Font(color="888888")
+            
+            current_row += 12 # 아래로 2명 그릴 공간 이동
+            
+            # [핵심] 위아래로 2세트(총 4명) 그렸으면 페이지 강제 넘김
+            if user_count % 4 == 3:
+                ws.row_breaks.append(Break(id=current_row - 1))
 
-    # 인쇄 마진 및 중앙 정렬 세팅
-    ws.page_margins.left = 0.5; ws.page_margins.right = 0.5
+        user_count += 1
+
+    # [프린터 설정 강제 세팅] 
+    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE # 가로 인쇄
+    ws.page_setup.fitToPage = True 
+    ws.page_setup.fitToWidth = 1  # 가로 1장에 딱 맞춤
+    ws.page_setup.fitToHeight = 0 # 세로는 자동으로 페이지 나뉨
+    
+    ws.page_margins.left = 0.3; ws.page_margins.right = 0.3
     ws.page_margins.top = 0.5; ws.page_margins.bottom = 0.5
     ws.print_options.horizontalCentered = True
     
@@ -309,7 +323,7 @@ if df_income is not None:
 
     elif menu == "✍️ 데이터 관리":
         tab1, tab2, tab3 = st.tabs(["💰 헌금 수입", "📉 지출 내역", "👤 작정액 관리"])
-        with tab1: # 헌금 수입 관리
+        with tab1:
             if st.session_state.mode_inc is None:
                 df_view = df_income.copy()
                 if '날짜' in df_view.columns: df_view['날짜'] = df_view['날짜'].apply(format_date_str)
@@ -345,7 +359,7 @@ if df_income is not None:
                     if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '헌금수입', df_income)): st.session_state.mode_inc = None; st.rerun()
                 if st.button("취소"): st.session_state.mode_inc = None; st.rerun()
 
-        with tab2: # 지출 관리 
+        with tab2:
             if st.session_state.mode_exp is None:
                 df_exp_view = df_expense.copy()
                 if '날짜' in df_exp_view.columns: df_exp_view['날짜'] = df_exp_view['날짜'].apply(format_date_str)
@@ -376,7 +390,7 @@ if df_income is not None:
                     df_expense = df_expense.drop(df_expense.index[st.session_state.edit_idx_exp])
                     if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '지출', df_expense)): st.session_state.mode_exp = None; st.rerun()
 
-        with tab3: # 작정액 관리
+        with tab3: 
             if st.session_state.mode_tgt is None:
                 df_view = df_target.copy()
                 for idx, row in df_view.iterrows():
@@ -415,13 +429,13 @@ if df_income is not None:
         c1, c2, c3 = st.columns(3); c1.metric("총 수입", f"{int(t_inc):,} 원"); c2.metric("총 지출", f"{int(t_exp):,} 원"); c3.metric("현재 잔액", f"{int(t_inc - t_exp):,} 원")
 
     elif menu == "🖨️ 인쇄용 집계표":
-        st.subheader("🖨️ 인쇄용 집계표 엑셀 생성")
-        st.info("💡 버튼을 누르시면, 선택하신 월에 헌금하신 분들만의 **'개인별 헌금 인쇄 양식'이 엑셀에 자동으로 그려져서** 다운로드됩니다. (1페이지 4명 및 절취선 자동 적용)")
+        st.subheader("🖨️ 인쇄용 엑셀 다운로드 (자동 가로 4명 출력)")
+        st.info("💡 **아무 인쇄 설정도 필요 없습니다!** 다운로드 받은 파일을 열고 바로 `Ctrl + P` (인쇄)만 누르시면 가로 용지 한 장에 성도님 4명이 완벽하게 맞춰 출력됩니다.")
         
         months = sorted(list(set([f"2026{str(m).zfill(2)}" for m in range(1, 13)] + list(df_income[i_y].unique()))), reverse=True)
         target_month = st.selectbox("📌 기준월 선택", months)
-        if st.button("🔄 인쇄 양식 엑셀 다운로드 준비"):
-            with st.spinner("엑셀 양식을 자동으로 그리는 중입니다..."):
+        if st.button("🔄 인쇄 양식 엑셀 파일 만들기"):
+            with st.spinner("엑셀 2x2 그리드 배열을 그리는 중입니다..."):
                 donors = set(df_income[df_income[i_y] == target_month][i_n].apply(clean_str).unique())
                 
                 for idx, row in df_target.iterrows():
@@ -437,7 +451,7 @@ if df_income is not None:
 
                 if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '작정액', df_target)):
                     st.session_state.download_data = generate_summary_excel(df_income, df_target, target_month)
-                    st.success(f"✅ {target_month}월 인쇄 양식이 완성되었습니다! 아래 버튼을 눌러 엑셀을 열고 바로 인쇄(Ctrl+P)를 누르세요.")
+                    st.success(f"✅ 완성되었습니다! 아래 버튼을 눌러 엑셀 파일을 다운로드하세요.")
                     
         if 'download_data' in st.session_state:
-            st.download_button("📥 인쇄용 엑셀 다운로드", data=st.session_state.download_data, file_name=f"개인별_헌금내역_{target_month}.xlsx")
+            st.download_button("📥 인쇄용 엑셀 (A4 가로 4명) 다운로드", data=st.session_state.download_data, file_name=f"선교헌금_인쇄용_{target_month}.xlsx")
