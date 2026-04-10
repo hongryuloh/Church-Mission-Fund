@@ -11,56 +11,61 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from datetime import datetime
 
-# --- 1. 앱 기본 설정 및 모바일/사파리 최종 보정 CSS ---
-st.set_page_config(page_title="선교헌금 관리", layout="wide", initial_sidebar_state="auto")
+# ==========================================
+# [중요] 매년 이 숫자만 변경하면 됩니다.
+TARGET_YEAR = 2026 
+# ==========================================
 
-st.markdown("""
+# --- 1. 앱 기본 설정 및 모바일/사파리 최적화 CSS ---
+st.set_page_config(
+    page_title=f"{TARGET_YEAR} 선교헌금 관리", 
+    layout="wide", 
+    initial_sidebar_state="auto"
+)
+
+st.markdown(f"""
     <style>
-    /* 1. 상단 여백 및 헤더 레이아웃 최적화 */
-    .block-container { padding-top: 3rem !important; padding-bottom: 5rem !important; }
-    
-    /* 오른쪽 상단 시스템 점3개 메뉴(MainMenu)를 완전히 제거 */
-    #MainMenu { visibility: hidden; display: none !important; }
-    header { background-color: rgba(0,0,0,0) !important; }
+    /* 1. 상단 여백 및 헤더 레이아웃 */
+    .block-container {{ padding-top: 3rem !important; padding-bottom: 5rem !important; }}
+    #MainMenu {{ visibility: hidden; display: none !important; }}
+    header {{ background-color: rgba(0,0,0,0) !important; }}
 
-    /* 2. 왼쪽 상단 사이드바 열기 버튼만 정확하게 타겟팅 (빨간색 원형) */
-    /* data-testid를 사용하여 오른쪽 메뉴와 혼동되지 않게 합니다. */
-    div[data-testid="stSidebarCollapsedControl"] button {
+    /* 2. 왼쪽 상단 사이드바 버튼 강조 (빨간색 원형) */
+    div[data-testid="stSidebarCollapsedControl"] button {{
         background-color: #ff4b4b !important;
         color: white !important;
         border-radius: 50% !important;
         width: 48px !important;
         height: 48px !important;
         position: fixed !important;
-        top: 15px !important;  /* 시스템 메뉴와 겹치지 않게 약간 아래로 */
-        left: 15px !important; /* 시스템 메뉴와 겹치지 않게 약간 오른쪽으로 */
+        top: 15px !important;
+        left: 15px !important;
         z-index: 999999 !important;
         box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
         border: 2px solid white !important;
-    }
+    }}
     
-    /* 버튼 내부의 화살표 아이콘을 흰색으로 */
-    div[data-testid="stSidebarCollapsedControl"] button svg {
+    div[data-testid="stSidebarCollapsedControl"] button svg {{
         fill: white !important;
         width: 26px !important;
         height: 26px !important;
-    }
+    }}
 
-    /* 3. 모바일 하단 버튼 가로 배치 (데이터 관리용) */
-    div[data-testid="stHorizontalBlock"] {
+    /* 3. 모바일 하단 버튼 가로 배치 */
+    div[data-testid="stHorizontalBlock"] {{
         display: flex !important;
         flex-direction: row !important;
         flex-wrap: nowrap !important;
         align-items: flex-end !important;
         gap: 5px !important;
-    }
-    div[data-testid="stHorizontalBlock"] > div {
+    }}
+    div[data-testid="stHorizontalBlock"] > div {{
         flex: 1 1 auto !important;
         min-width: 0 !important;
-    }
+    }}
     
     /* 4. 하단 고정 바 (Footer) */
-    .fixed-footer {
+    .fixed-footer {{
         position: fixed;
         bottom: 0;
         left: 0;
@@ -69,25 +74,19 @@ st.markdown("""
         padding: 10px 15px 30px 15px;
         border-top: 1px solid #ddd;
         z-index: 999;
-    }
-    @media (prefers-color-scheme: dark) {
-        .fixed-footer { background-color: #1e1e1e !important; border-top: 1px solid #333 !important; }
-    }
+    }}
+    @media (prefers-color-scheme: dark) {{
+        .fixed-footer {{ background-color: #1e1e1e !important; border-top: 1px solid #333 !important; }}
+    }}
     
-    /* 5. 버튼 및 입력창 모바일 최적화 */
-    .stButton button { width: 100% !important; padding: 0px !important; font-size: 13px !important; height: 42px !important; }
-    .stNumberInput input { height: 42px !important; }
+    .stButton button {{ width: 100% !important; padding: 0px !important; font-size: 13px !important; height: 42px !important; }}
+    .stNumberInput input {{ height: 42px !important; }}
     
-    /* 사이드바 내부 스타일 */
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {{
         font-size: 17px !important;
         font-weight: 600 !important;
         padding: 12px 0px !important;
-        color: #333;
-    }
-    @media (prefers-color-scheme: dark) {
-        [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label { color: white; }
-    }
+    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -101,8 +100,8 @@ if "current_user" not in st.session_state:
 if not st.session_state["authenticated"]:
     col1, col2, col3 = st.columns([1, 2, 1]) 
     with col2:
-        st.title("⛪ 선교헌금 관리 시스템")
-        st.info("🔒ID/비밀번호 입력")
+        st.title(f"⛪ {TARGET_YEAR} 선교헌금 관리")
+        st.info("🔒 접근 권한이 필요합니다. ID와 비밀번호를 입력해 주세요.")
         with st.form("login_form"):
             input_id = st.text_input("아이디 (ID)")
             input_pwd = st.text_input("비밀번호 (Password)", type="password")
@@ -116,9 +115,9 @@ if not st.session_state["authenticated"]:
                     st.error("❌ 아이디 또는 비밀번호가 틀렸습니다.")
     st.stop() 
 
-# [모바일 최적화] 사이드바 구성
+# 사이드바 구성
 with st.sidebar:
-    st.title("⛪ 선교헌금")
+    st.title(f"⛪ {TARGET_YEAR} 선교헌금")
     st.write(f"👤 **{st.session_state['current_user']}**님 접속 중")
     if st.button("로그아웃", use_container_width=True):
         st.session_state["authenticated"] = False
@@ -248,7 +247,7 @@ def append_dict_to_excel(raw_excel, sheet_name, row_dict):
     output = io.BytesIO(); wb.save(output); return output.getvalue()
 
 # --- 3. 데이터 계산 ---
-def calculate_details(user_name, df_income, df_target, start_year=2026):
+def calculate_details(user_name, df_income, df_target, start_year=TARGET_YEAR):
     t_n = get_col(df_target, ['이름', '성명'], 0)
     t_a = get_col(df_target, ['월별 작정액', '작정액'], 2)
     i_n = get_col(df_income, ['이름', '성명'], 2)
@@ -286,7 +285,7 @@ def calculate_details(user_name, df_income, df_target, start_year=2026):
     return {"name": user_name, "commit": commit, "alloc": alloc[1:], "labs": lab[1:], "total": total_donated}
 
 # --- 4. 인쇄 포맷 ---
-def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
+def generate_summary_excel(df_income, df_target, target_month, start_year=TARGET_YEAR):
     wb = openpyxl.Workbook(); ws = wb.active; ws.title = "개인별 헌금내역"
     for c in range(1, 19): ws.column_dimensions[get_column_letter(c)].width = 8.13
     thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
@@ -304,7 +303,7 @@ def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
     def draw_user_block(r, c_off, user):
         for r_i in range(r, r+9): ws.row_dimensions[r_i].height = 25 
         ws.merge_cells(start_row=r, start_column=1+c_off, end_row=r, end_column=8+c_off)
-        ws.cell(row=r, column=1+c_off, value="2026년 선교헌금 작정 및 헌금내역").font = Font(size=16, bold=True, underline="single")
+        ws.cell(row=r, column=1+c_off, value=f"{TARGET_YEAR}년 선교헌금 작정 및 헌금내역").font = Font(size=16, bold=True, underline="single")
         ws.cell(row=r, column=1+c_off).alignment = center_align
         ws.merge_cells(start_row=r+1, start_column=1+c_off, end_row=r+1, end_column=3+c_off); ws.cell(row=r+1, column=1+c_off, value=f"({today_str} 기준)").font = Font(bold=True)
         ws.merge_cells(start_row=r+1, start_column=4+c_off, end_row=r+1, end_column=6+c_off); ws.cell(row=r+1, column=4+c_off, value="선교헌금 합계 :").alignment = Alignment(horizontal='right', vertical='center')
@@ -351,7 +350,6 @@ with st.spinner('데이터 동기화 중...'):
     df_income, df_target, df_expense, raw_excel = load_data(FILE_ID)
 
 if df_income is not None:
-    # 사이드바 메뉴는 항상 최상단에
     if st.session_state["current_user"] in ["admin", "mission01"]:
         menu_options = ["🔍 개인별 조회", "✍️ 데이터 관리", "📊 결산/주단위집계", "🖨️ 인쇄용 집계표"]
     else: menu_options = ["📊 결산/주단위집계"]
@@ -536,37 +534,44 @@ if df_income is not None:
         df_inc_calc, df_exp_calc = df_income.copy(), df_expense.copy()
         df_inc_calc['amt'] = pd.to_numeric(df_inc_calc[i_a], errors='coerce').fillna(0)
         df_exp_calc['amt'] = pd.to_numeric(df_exp_calc[e_a], errors='coerce').fillna(0)
-        c_inc = df_inc_calc[(df_inc_calc['날짜'].astype(str) < '2026-01-01') | (df_inc_calc[i_n].astype(str).str.contains('전년이월'))]['amt'].sum()
-        c_exp = df_exp_calc[(df_exp_calc[e_d].astype(str) < '2026-01-01') | (df_exp_calc[e_n].astype(str).str.contains('전년이월'))]['amt'].sum()
+        
+        # 날짜 비교 변수화
+        c_inc = df_inc_calc[(df_inc_calc['날짜'].astype(str) < f"{TARGET_YEAR}-01-01") | (df_inc_calc[i_n].astype(str).str.contains('전년이월'))]['amt'].sum()
+        c_exp = df_exp_calc[(df_exp_calc[e_d].astype(str) < f"{TARGET_YEAR}-01-01") | (df_exp_calc[e_n].astype(str).str.contains('전년이월'))]['amt'].sum()
         carryover_bal = c_inc - c_exp
-        df_inc_26 = df_inc_calc[(df_inc_calc['날짜'].astype(str) >= '2026-01-01') & (~df_inc_calc[i_n].astype(str).str.contains('전년이월'))]
-        df_exp_26 = df_exp_calc[(df_exp_calc[e_d].astype(str) >= '2026-01-01') & (~df_exp_calc[e_n].astype(str).str.contains('전년이월'))]
+        
+        df_inc_target = df_inc_calc[(df_inc_calc['날짜'].astype(str) >= f"{TARGET_YEAR}-01-01") & (~df_inc_calc[i_n].astype(str).str.contains('전년이월'))]
+        df_exp_target = df_exp_calc[(df_exp_calc[e_d].astype(str) >= f"{TARGET_YEAR}-01-01") & (~df_exp_calc[e_n].astype(str).str.contains('전년이월'))]
+        
         with tab1:
-            st.subheader("선교헌금 결산내역")
+            st.subheader(f"{TARGET_YEAR}년 선교헌금 결산내역")
             monthly_data = [{"월별": "전년이월", "수입": carryover_bal, "지출": 0, "잔액": carryover_bal}]
             cur_bal, tot_inc, tot_exp = carryover_bal, carryover_bal, 0
             for m in range(1, 13):
-                ym = f"2026{m:02d}"
-                inc, exp = df_inc_26[df_inc_26[i_y] == ym]['amt'].sum(), df_exp_26[df_exp_26['년월'] == ym]['amt'].sum()
+                ym = f"{TARGET_YEAR}{m:02d}"
+                inc, exp = df_inc_target[df_inc_target[i_y] == ym]['amt'].sum(), df_exp_target[df_exp_target['년월'] == ym]['amt'].sum()
                 if inc == 0 and exp == 0 and m > datetime.now().month: monthly_data.append({"월별": ym, "수입": 0, "지출": 0, "잔액": 0})
                 else: cur_bal += (inc - exp); tot_inc += inc; tot_exp += exp; monthly_data.append({"월별": ym, "수입": inc, "지출": exp, "잔액": cur_bal})
             monthly_data.append({"월별": "합계", "수입": tot_inc, "지출": tot_exp, "잔액": tot_inc - tot_exp})
+            
             h1 = "<table style='width:100%; border-collapse: collapse; text-align: center; border: 2px solid #a4b7c6; font-size: 15px; background-color: #ffffff; color: #333333;'>"
             h1 += "<tr style='background-color: #dbe5f1;'><th style='border: 1px solid #a4b7c6; padding: 10px;'>월별</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>수입</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>지출</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>잔액</th></tr>"
             for row in monthly_data:
                 bg = "#b4c6e7" if row['월별'] == "합계" else ("#f4f5f7" if row['월별'] == "전년이월" else "#ffffff")
                 h1 += f"<tr style='background-color: {bg};'><td style='border: 1px solid #a4b7c6; padding: 8px;'>{row['월별']}</td><td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['수입'])}</td><td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['지출'])}</td><td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['잔액'])}</td></tr>"
             st.markdown(h1 + "</table>", unsafe_allow_html=True)
+            
         with tab2:
-            st.subheader("선교헌금 주단위 결산내역")
-            d_inc_list, d_exp_list = [format_date_str(d) for d in df_inc_26[df_inc_26['amt'] > 0]['날짜']], [format_date_str(d) for d in df_exp_26[df_exp_26['amt'] > 0][e_d]]
-            all_dates = sorted(list(set([d for d in d_inc_list + d_exp_list if str(d).startswith('2026')])))
+            st.subheader(f"{TARGET_YEAR}년 선교헌금 주단위 결산내역")
+            d_inc_list, d_exp_list = [format_date_str(d) for d in df_inc_target[df_inc_target['amt'] > 0]['날짜']], [format_date_str(d) for d in df_exp_target[df_exp_target['amt'] > 0][e_d]]
+            all_dates = sorted(list(set([d for d in d_inc_list + d_exp_list if str(d).startswith(str(TARGET_YEAR))])))
             weekly_temp = []
             cur_bal, tot_inc, tot_exp = carryover_bal, carryover_bal, 0
             for d_str in all_dates:
-                inc, exp = df_inc_26[df_inc_26['날짜'].apply(format_date_str) == d_str]['amt'].sum(), df_exp_26[df_exp_26[e_d].apply(format_date_str) == d_str]['amt'].sum()
+                inc, exp = df_inc_target[df_inc_target['날짜'].apply(format_date_str) == d_str]['amt'].sum(), df_exp_target[df_exp_target[e_d].apply(format_date_str) == d_str]['amt'].sum()
                 cur_bal += (inc - exp); tot_inc += inc; tot_exp += exp; weekly_temp.append({"월별": d_str, "수입": inc, "지출": exp, "잔액": cur_bal})
             weekly_display = [{"월별": "합계", "수입": tot_inc, "지출": tot_exp, "잔액": tot_inc - tot_exp}] + weekly_temp[::-1] + [{"월별": "전년이월", "수입": carryover_bal, "지출": 0, "잔액": carryover_bal}]
+            
             h2 = "<table style='width:100%; border-collapse: collapse; text-align: center; border: 2px solid #a4b7c6; font-size: 15px; background-color: #ffffff; color: #333333;'>"
             h2 += "<tr style='background-color: #dbe5f1;'><th style='border: 1px solid #a4b7c6; padding: 10px;'>월별</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>수입</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>지출</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>잔액</th></tr>"
             for row in weekly_display:
@@ -576,7 +581,7 @@ if df_income is not None:
 
     elif menu == "🖨️ 인쇄용 집계표":
         st.subheader("🖨️ 인쇄용 엑셀 다운로드 (자동 가로 4명 출력)")
-        months = sorted(list(set([f"2026{str(m).zfill(2)}" for m in range(1, 13)] + list(df_income[i_y].unique()))), reverse=True)
+        months = sorted(list(set([f"{TARGET_YEAR}{str(m).zfill(2)}" for m in range(1, 13)] + list(df_income[i_y].unique()))), reverse=True)
         target_month = st.selectbox("📌 기준월 선택", months)
         if st.button("🔄 인쇄 양식 엑셀 파일 만들기", use_container_width=True):
             with st.spinner("엑셀 2x2 그리드 배열을 그리는 중입니다..."):
