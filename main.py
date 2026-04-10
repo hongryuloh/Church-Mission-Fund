@@ -212,19 +212,17 @@ def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
     def draw_user_block(r, c_off, user):
         for r_i in range(r, r+9): ws.row_dimensions[r_i].height = 25 
         ws.merge_cells(start_row=r, start_column=1+c_off, end_row=r, end_column=8+c_off)
-        title = ws.cell(row=r, column=1+c_off, value="2026년 선교헌금 작정 및 헌금내역")
-        title.font = Font(size=16, bold=True, underline="single"); title.alignment = center_align
+        ws.cell(row=r, column=1+c_off, value="2026년 선교헌금 작정 및 헌금내역").font = Font(size=16, bold=True, underline="single")
+        ws.cell(row=r, column=1+c_off).alignment = center_align
         ws.merge_cells(start_row=r+1, start_column=1+c_off, end_row=r+1, end_column=3+c_off)
         ws.cell(row=r+1, column=1+c_off, value=f"({today_str} 기준)").font = Font(bold=True)
         ws.merge_cells(start_row=r+1, start_column=4+c_off, end_row=r+1, end_column=6+c_off)
         ws.cell(row=r+1, column=4+c_off, value="선교헌금 합계 :").alignment = Alignment(horizontal='right', vertical='center')
         ws.merge_cells(start_row=r+1, start_column=7+c_off, end_row=r+1, end_column=8+c_off)
         t_c = ws.cell(row=r+1, column=7+c_off, value=user['total'])
-        t_c.font = Font(bold=True); t_c.number_format = '#,##0'; t_c.alignment = center_align
+        t_c.font, t_c.number_format, t_c.alignment = Font(bold=True), '#,##0', center_align
         for row_i in range(r+2, r+8):
-            for col_i in range(1+c_off, 9+c_off):
-                c = ws.cell(row=row_i, column=col_i)
-                c.border = thin_border; c.alignment = center_align
+            for col_i in range(1+c_off, 9+c_off): ws.cell(row=row_i, column=col_i).border = thin_border; ws.cell(row=row_i, column=col_i).alignment = center_align
         ws.cell(row=r+2, column=1+c_off, value="이름").font = Font(bold=True)
         ws.cell(row=r+2, column=2+c_off, value="월작정액").font = Font(bold=True)
         for i, m in enumerate(["01", "02", "03", "04", "05", "06"], 3): ws.cell(row=r+2, column=i+c_off, value=m).font = Font(bold=True)
@@ -232,24 +230,20 @@ def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
         ws.merge_cells(start_row=r+3, start_column=1+c_off, end_row=r+7, end_column=1+c_off)
         ws.cell(row=r+3, column=1+c_off, value=f"{user['name']}\n{user['pos']}").font = Font(bold=True)
         ws.merge_cells(start_row=r+3, start_column=2+c_off, end_row=r+7, end_column=2+c_off)
-        c_val = user['commit']
-        cc = ws.cell(row=r+3, column=2+c_off, value=c_val if c_val > 0 else "-")
-        if c_val > 0: cc.number_format = '#,##0'
+        cc = ws.cell(row=r+3, column=2+c_off, value=user['commit'] if user['commit'] > 0 else "-")
+        if user['commit'] > 0: cc.number_format = '#,##0'
         for i in range(6):
             ws.cell(row=r+3, column=i+3+c_off, value=user['labs'][i])
-            amt1 = user['alloc'][i]
-            c1 = ws.cell(row=r+4, column=i+3+c_off, value=amt1 if amt1 > 0 else "")
-            if amt1 > 0: c1.number_format = '#,##0'
+            c1 = ws.cell(row=r+4, column=i+3+c_off, value=user['alloc'][i] if user['alloc'][i] > 0 else "")
+            if user['alloc'][i] > 0: c1.number_format = '#,##0'
             ws.cell(row=r+6, column=i+3+c_off, value=user['labs'][i+6])
-            amt2 = user['alloc'][i+6]
-            c2 = ws.cell(row=r+7, column=i+3+c_off, value=amt2 if amt2 > 0 else "")
-            if amt2 > 0: c2.number_format = '#,##0'
+            c2 = ws.cell(row=r+7, column=i+3+c_off, value=user['alloc'][i+6] if user['alloc'][i+6] > 0 else "")
+            if user['alloc'][i+6] > 0: c2.number_format = '#,##0'
         ws.merge_cells(start_row=r+8, start_column=1+c_off, end_row=r+8, end_column=8+c_off)
         ws.cell(row=r+8, column=1+c_off, value="선교헌금에 관심가져주셔서 감사합니다.").alignment = center_align
 
     for i in range(0, len(user_list), 2):
-        user_left = user_list[i]
-        user_right = user_list[i+1] if i+1 < len(user_list) else None
+        user_left, user_right = user_list[i], user_list[i+1] if i+1 < len(user_list) else None
         for r_idx in range(current_row, current_row + 9):
             ws.row_dimensions[r_idx].height = 25
             ws.cell(row=r_idx, column=9).border = Border(right=Side(style='thin', color='000000'))
@@ -261,27 +255,16 @@ def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
             for r_idx in range(gap_start, gap_start + 3):
                 ws.row_dimensions[r_idx].height = 25
                 ws.cell(row=r_idx, column=9).border = Border(right=Side(style='thin', color='000000'))
-            for col_i in range(1, 19):
-                c = ws.cell(row=gap_start, column=col_i)
-                c.border = Border(bottom=Side(style='dashed', color='888888'), right=c.border.right)
+            for col_i in range(1, 19): ws.cell(row=gap_start, column=col_i).border = Border(bottom=Side(style='dashed', color='888888'), right=ws.cell(row=gap_start, column=col_i).border.right)
             current_row += 12 
         else:
             gap_start = current_row + 9
             ws.row_dimensions[gap_start].height = 25
             ws.cell(row=gap_start, column=9).border = Border(right=Side(style='thin', color='000000'))
-            for col_i in range(1, 19):
-                c = ws.cell(row=gap_start, column=col_i)
-                c.border = Border(bottom=Side(style='dashed', color='888888'), right=c.border.right)
-            ws.row_breaks.append(Break(id=gap_start)) 
-            current_row += 10 
-
-    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
-    ws.page_setup.fitToPage = True 
-    ws.page_setup.fitToWidth = 1  
-    ws.page_setup.fitToHeight = 0 
-    ws.page_margins.left = 0.25; ws.page_margins.right = 0.25
-    ws.page_margins.top = 0.5; ws.page_margins.bottom = 0.5
-    ws.print_options.horizontalCentered = True
+            for col_i in range(1, 19): ws.cell(row=gap_start, column=col_i).border = Border(bottom=Side(style='dashed', color='888888'), right=ws.cell(row=gap_start, column=col_i).border.right)
+            ws.row_breaks.append(Break(id=gap_start)); current_row += 10 
+    ws.page_setup.orientation, ws.page_setup.fitToPage, ws.page_setup.fitToWidth = ws.ORIENTATION_LANDSCAPE, True, 1  
+    ws.page_margins.left = ws.page_margins.right = 0.25
     output = io.BytesIO(); wb.save(output); return output.getvalue()
 
 # --- 5. 앱 화면 구성 ---
@@ -289,7 +272,6 @@ st.set_page_config(page_title="2026 선교헌금 관리", layout="wide")
 st.title("⛪ 2026 선교헌금 관리 시스템")
 for k in ['edit_idx_inc', 'edit_idx_exp', 'edit_idx_tgt', 'mode_inc', 'mode_exp', 'mode_tgt']:
     if k not in st.session_state: st.session_state[k] = None
-
 with st.spinner('데이터 동기화 중...'):
     df_income, df_target, df_expense, raw_excel = load_data(FILE_ID)
 
@@ -307,33 +289,22 @@ if df_income is not None:
             if res:
                 user_info = df_target[df_target[t_n].astype(str).str.strip() == selected]
                 pos = clean_str(user_info.iloc[0].get(t_p, "")) if not user_info.empty else ""
-                pos_str = f"({pos})" if pos else ""
-                st.subheader(f"📄 {res['name']} {pos_str}")
-                
-                today_str = datetime.now().strftime("%Y.%m.%d")
-                st.write(f"기준일({today_str}) 현재 / 월 작정액: {int(res['commit']):,}원 / 총 헌금액: {int(res['total']):,}원")
-                
+                st.subheader(f"📄 {res['name']} ({pos})")
+                st.write(f"기준일({datetime.now().strftime('%Y.%m.%d')}) 현재 / 월 작정액: {int(res['commit']):,}원 / 총 헌금액: {int(res['total']):,}원")
                 html = "<table style='width:100%; border-collapse: collapse; text-align: center; margin-top: 15px;'>"
                 html += "<tr style='background-color: #f8f9fa;'>"
                 for i in range(1, 7): html += f"<th style='border: 1px solid #ddd; padding: 10px;'>{i}월</th>"
                 html += "</tr><tr>"
                 for i in range(6):
-                    lab = str(res['labs'][i]).replace('\n', '<br>')
-                    amt = f"{int(res['alloc'][i]):,}원" if res['alloc'][i] > 0 else "0원"
-                    content = f"<span style='font-size:0.85em; color:#888;'>{lab}</span><br><b>{amt}</b>" if lab else f"<b>{amt}</b>"
-                    html += f"<td style='border: 1px solid #ddd; padding: 15px;'>{content}</td>"
-                html += "</tr>"
-                html += "<tr style='background-color: #f8f9fa;'>"
+                    lab, amt = str(res['labs'][i]).replace('\n', '<br>'), f"{int(res['alloc'][i]):,}원" if res['alloc'][i] > 0 else "0원"
+                    html += f"<td style='border: 1px solid #ddd; padding: 15px;'><span style='font-size:0.85em; color:#888;'>{lab}</span><br><b>{amt}</b></td>"
+                html += "</tr><tr style='background-color: #f8f9fa;'>"
                 for i in range(7, 13): html += f"<th style='border: 1px solid #ddd; padding: 10px;'>{i}월</th>"
                 html += "</tr><tr>"
                 for i in range(6, 12):
-                    lab = str(res['labs'][i]).replace('\n', '<br>')
-                    amt = f"{int(res['alloc'][i]):,}원" if res['alloc'][i] > 0 else "0원"
-                    content = f"<span style='font-size:0.85em; color:#888;'>{lab}</span><br><b>{amt}</b>" if lab else f"<b>{amt}</b>"
-                    html += f"<td style='border: 1px solid #ddd; padding: 15px;'>{content}</td>"
-                html += "</tr>"
-                html += "</table>"
-                st.markdown(html, unsafe_allow_html=True)
+                    lab, amt = str(res['labs'][i]).replace('\n', '<br>'), f"{int(res['alloc'][i]):,}원" if res['alloc'][i] > 0 else "0원"
+                    html += f"<td style='border: 1px solid #ddd; padding: 15px;'><span style='font-size:0.85em; color:#888;'>{lab}</span><br><b>{amt}</b></td>"
+                html += "</tr></table>"; st.markdown(html, unsafe_allow_html=True)
 
     elif menu == "✍️ 데이터 관리":
         tab1, tab2, tab3 = st.tabs(["💰 헌금 수입", "📉 지출 내역", "👤 작정액 관리"])
@@ -438,94 +409,48 @@ if df_income is not None:
 
     elif menu == "📊 결산/주단위집계":
         tab1, tab2 = st.tabs(["📅 월별 결산내역", "📆 주단위 결산내역"])
-        
-        df_inc_calc = df_income.copy()
-        df_exp_calc = df_expense.copy()
+        df_inc_calc, df_exp_calc = df_income.copy(), df_expense.copy()
         df_inc_calc['amt'] = pd.to_numeric(df_inc_calc[i_a], errors='coerce').fillna(0)
         df_exp_calc['amt'] = pd.to_numeric(df_exp_calc[e_a], errors='coerce').fillna(0)
-        
         c_inc = df_inc_calc[(df_inc_calc['날짜'].astype(str) < '2026-01-01') | (df_inc_calc[i_n].astype(str).str.contains('전년이월'))]['amt'].sum()
         c_exp = df_exp_calc[(df_exp_calc[e_d].astype(str) < '2026-01-01') | (df_exp_calc[e_n].astype(str).str.contains('전년이월'))]['amt'].sum()
         carryover_bal = c_inc - c_exp
-        
         df_inc_26 = df_inc_calc[(df_inc_calc['날짜'].astype(str) >= '2026-01-01') & (~df_inc_calc[i_n].astype(str).str.contains('전년이월'))]
         df_exp_26 = df_exp_calc[(df_exp_calc[e_d].astype(str) >= '2026-01-01') & (~df_exp_calc[e_n].astype(str).str.contains('전년이월'))]
         
         with tab1:
             st.subheader("선교헌금 결산내역")
-            monthly_data = []
-            monthly_data.append({"월별": "전년이월", "수입": carryover_bal, "지출": 0, "잔액": carryover_bal})
-            
-            cur_bal = carryover_bal
-            tot_inc = carryover_bal
-            tot_exp = 0
-            
+            monthly_data = [{"월별": "전년이월", "수입": carryover_bal, "지출": 0, "잔액": carryover_bal}]
+            cur_bal, tot_inc, tot_exp = carryover_bal, carryover_bal, 0
             for m in range(1, 13):
                 ym = f"2026{m:02d}"
-                inc = df_inc_26[df_inc_26[i_y] == ym]['amt'].sum()
-                exp = df_exp_26[df_exp_26['년월'] == ym]['amt'].sum()
-                
-                if inc == 0 and exp == 0 and m > datetime.now().month:
-                    monthly_data.append({"월별": ym, "수입": 0, "지출": 0, "잔액": 0})
-                else:
-                    cur_bal += (inc - exp)
-                    tot_inc += inc
-                    tot_exp += exp
-                    monthly_data.append({"월별": ym, "수입": inc, "지출": exp, "잔액": cur_bal})
-            
+                inc, exp = df_inc_26[df_inc_26[i_y] == ym]['amt'].sum(), df_exp_26[df_exp_26['년월'] == ym]['amt'].sum()
+                if inc == 0 and exp == 0 and m > datetime.now().month: monthly_data.append({"월별": ym, "수입": 0, "지출": 0, "잔액": 0})
+                else: cur_bal += (inc - exp); tot_inc += inc; tot_exp += exp; monthly_data.append({"월별": ym, "수입": inc, "지출": exp, "잔액": cur_bal})
             monthly_data.append({"월별": "합계", "수입": tot_inc, "지출": tot_exp, "잔액": tot_inc - tot_exp})
-            
             h1 = "<table style='width:100%; border-collapse: collapse; text-align: center; border: 2px solid #a4b7c6; font-size: 15px;'>"
             h1 += "<tr style='background-color: #dbe5f1;'><th style='border: 1px solid #a4b7c6; padding: 10px;'>월별</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>수입</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>지출</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>잔액</th></tr>"
             for row in monthly_data:
-                bg = "#b4c6e7" if row['월별'] == "합계" else "#ffffff"
-                bg = "#f4f5f7" if row['월별'] == "전년이월" else bg
-                h1 += f"<tr style='background-color: {bg};'>"
-                h1 += f"<td style='border: 1px solid #a4b7c6; padding: 8px;'>{row['월별']}</td>"
-                h1 += f"<td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['수입'])}</td>"
-                h1 += f"<td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['지출'])}</td>"
-                h1 += f"<td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['잔액'])}</td></tr>"
-            h1 += "</table>"
-            st.markdown(h1, unsafe_allow_html=True)
+                bg = "#b4c6e7" if row['월별'] == "합계" else ("#f4f5f7" if row['월별'] == "전년이월" else "#ffffff")
+                h1 += f"<tr style='background-color: {bg};'><td style='border: 1px solid #a4b7c6; padding: 8px;'>{row['월별']}</td><td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['수입'])}</td><td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['지출'])}</td><td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['잔액'])}</td></tr>"
+            st.markdown(h1 + "</table>", unsafe_allow_html=True)
             
         with tab2:
             st.subheader("선교헌금 주단위 결산내역")
-            
-            # [오류 해결] 문자열 포맷으로 변환 후 정렬하여 TypeError 완벽 방어
-            d_inc_list = [format_date_str(d) for d in df_inc_26[df_inc_26['amt'] > 0]['날짜']]
-            d_exp_list = [format_date_str(d) for d in df_exp_26[df_exp_26['amt'] > 0][e_d]]
+            d_inc_list, d_exp_list = [format_date_str(d) for d in df_inc_26[df_inc_26['amt'] > 0]['날짜']], [format_date_str(d) for d in df_exp_26[df_exp_26['amt'] > 0][e_d]]
             all_dates = sorted(list(set([d for d in d_inc_list + d_exp_list if str(d).startswith('2026')])))
-            
-            weekly_data = []
-            weekly_data.append({"월별": "전년이월", "수입": carryover_bal, "지출": 0, "잔액": carryover_bal})
-            
-            cur_bal = carryover_bal
-            tot_inc = carryover_bal
-            tot_exp = 0
-            
+            weekly_temp = []
+            cur_bal, tot_inc, tot_exp = carryover_bal, carryover_bal, 0
             for d_str in all_dates:
-                inc = df_inc_26[df_inc_26['날짜'].apply(format_date_str) == d_str]['amt'].sum()
-                exp = df_exp_26[df_exp_26[e_d].apply(format_date_str) == d_str]['amt'].sum()
-                
-                cur_bal += (inc - exp)
-                tot_inc += inc
-                tot_exp += exp
-                weekly_data.append({"월별": d_str, "수입": inc, "지출": exp, "잔액": cur_bal})
-                
-            weekly_data.append({"월별": "합계", "수입": tot_inc, "지출": tot_exp, "잔액": tot_inc - tot_exp})
-
+                inc, exp = df_inc_26[df_inc_26['날짜'].apply(format_date_str) == d_str]['amt'].sum(), df_exp_26[df_exp_26[e_d].apply(format_date_str) == d_str]['amt'].sum()
+                cur_bal += (inc - exp); tot_inc += inc; tot_exp += exp; weekly_temp.append({"월별": d_str, "수입": inc, "지출": exp, "잔액": cur_bal})
+            weekly_display = [{"월별": "합계", "수입": tot_inc, "지출": tot_exp, "잔액": tot_inc - tot_exp}] + weekly_temp[::-1] + [{"월별": "전년이월", "수입": carryover_bal, "지출": 0, "잔액": carryover_bal}]
             h2 = "<table style='width:100%; border-collapse: collapse; text-align: center; border: 2px solid #a4b7c6; font-size: 15px;'>"
             h2 += "<tr style='background-color: #dbe5f1;'><th style='border: 1px solid #a4b7c6; padding: 10px;'>월별</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>수입</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>지출</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>잔액</th></tr>"
-            for row in weekly_data:
-                bg = "#b4c6e7" if row['월별'] == "합계" else "#ffffff"
-                bg = "#f4f5f7" if row['월별'] == "전년이월" else bg
-                h2 += f"<tr style='background-color: {bg};'>"
-                h2 += f"<td style='border: 1px solid #a4b7c6; padding: 8px;'>{row['월별']}</td>"
-                h2 += f"<td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['수입'])}</td>"
-                h2 += f"<td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['지출'])}</td>"
-                h2 += f"<td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['잔액'])}</td></tr>"
-            h2 += "</table>"
-            st.markdown(h2, unsafe_allow_html=True)
+            for row in weekly_display:
+                bg = "#b4c6e7" if row['월별'] == "합계" else ("#f4f5f7" if row['월별'] == "전년이월" else "#ffffff")
+                h2 += f"<tr style='background-color: {bg};'><td style='border: 1px solid #a4b7c6; padding: 8px;'>{row['월별']}</td><td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['수입'])}</td><td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['지출'])}</td><td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['잔액'])}</td></tr>"
+            st.markdown(h2 + "</table>", unsafe_allow_html=True)
 
     elif menu == "🖨️ 인쇄용 집계표":
         st.subheader("🖨️ 인쇄용 엑셀 다운로드 (자동 가로 4명 출력)")
