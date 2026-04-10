@@ -22,35 +22,28 @@ if "current_user" not in st.session_state:
 
 # (2) 로그인 화면 구성
 if not st.session_state["authenticated"]:
-    # 화면 중앙 정렬을 위해 여백(columns) 활용
     col1, col2, col3 = st.columns([1, 2, 1]) 
-    
     with col2:
         st.title("⛪ 선교헌금 관리 시스템")
         st.info("🔒 접근 권한이 필요합니다. ID와 비밀번호를 입력해 주세요.")
-        
         with st.form("login_form"):
             input_id = st.text_input("아이디 (ID)")
             input_pwd = st.text_input("비밀번호 (Password)", type="password")
-            
             if st.form_submit_button("로그인", use_container_width=True):
-                # 입력한 ID가 secrets 목록에 있고, 비밀번호도 일치하는지 확인
                 credentials = st.secrets.get("credentials", {})
-                
                 if input_id in credentials and credentials[input_id] == input_pwd:
                     st.session_state["authenticated"] = True
-                    st.session_state["current_user"] = input_id # 접속자 기록
-                    st.rerun() # 로그인 성공 시 화면 새로고침하여 본문 진입
+                    st.session_state["current_user"] = input_id
+                    st.rerun() 
                 else:
                     st.error("❌ 아이디 또는 비밀번호가 틀렸습니다.")
-                    
-    st.stop() # 로그인을 통과하지 못하면 여기서 프로그램 강제 정지
+    st.stop() 
 
 # =====================================================================
 # 로그인을 통과한 사람만 아래 본문 코드가 실행됩니다.
 # =====================================================================
 
-# 우측 상단에 현재 접속자 표시 및 로그아웃 버튼 (선택 사항)
+# 우측 상단에 현재 접속자 표시 및 로그아웃 버튼 (제목 중복 방지)
 c1, c2 = st.columns([8, 1])
 with c1: st.title("⛪ 2026 선교헌금 관리 시스템")
 with c2: 
@@ -60,7 +53,7 @@ with c2:
         st.session_state["current_user"] = ""
         st.rerun()
 
-# --- 기존 1. 보안 설정 ---
+# --- 2. 보안 설정 및 헬퍼 함수 ---
 FILE_ID = st.secrets["google"]["file_id"]
 
 def get_gdrive_service():
@@ -70,7 +63,6 @@ def get_gdrive_service():
     )
     return build('drive', 'v3', credentials=credentials)
 
-# --- 헬퍼 함수 ---
 def clean_str(x):
     return str(x).split('.')[0].strip() if pd.notna(x) else ""
 
@@ -92,7 +84,6 @@ def fmt(val):
     if pd.isna(val) or val == 0: return "-"
     return f"{int(val):,}"
 
-# --- 2. 데이터 로드 ---
 @st.cache_data(ttl=60) 
 def load_data(file_id):
     try:
@@ -237,15 +228,11 @@ def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
     wb = openpyxl.Workbook() 
     ws = wb.active
     ws.title = "개인별 헌금내역"
-
     for c in range(1, 19): ws.column_dimensions[get_column_letter(c)].width = 8.13
-
     thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     center_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    
     t_n, t_p = get_col(df_target, ['이름', '성명'], 0), get_col(df_target, ['직분'], 1)
     print_users = df_target[df_target['인쇄여부'] == 'Y'] 
-    
     user_list = []
     for _, row_data in print_users.iterrows():
         name, pos = clean_str(row_data.get(t_n, '')), clean_str(row_data.get(t_p, ''))
@@ -254,10 +241,8 @@ def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
         if res:
             res['pos'] = pos
             user_list.append(res)
-
     today_str = datetime.now().strftime("%Y.%m.%d")
     current_row = 1
-
     def draw_user_block(r, c_off, user):
         for r_i in range(r, r+9): ws.row_dimensions[r_i].height = 25 
         ws.merge_cells(start_row=r, start_column=1+c_off, end_row=r, end_column=8+c_off)
@@ -316,11 +301,10 @@ def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
     ws.page_margins.left = ws.page_margins.right = 0.25
     output = io.BytesIO(); wb.save(output); return output.getvalue()
 
-# --- 5. 앱 화면 구성 ---
-st.set_page_config(page_title="2026 선교헌금 관리", layout="wide")
-st.title("⛪ 2026 선교헌금 관리 시스템")
+# --- 5. 앱 화면 구성 (중복 제목 삭제 완료) ---
 for k in ['edit_idx_inc', 'edit_idx_exp', 'edit_idx_tgt', 'mode_inc', 'mode_exp', 'mode_tgt']:
     if k not in st.session_state: st.session_state[k] = None
+
 with st.spinner('데이터 동기화 중...'):
     df_income, df_target, df_expense, raw_excel = load_data(FILE_ID)
 
