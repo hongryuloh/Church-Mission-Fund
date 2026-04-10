@@ -11,46 +11,42 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from datetime import datetime
 
-# --- 1. 앱 기본 설정 및 모바일/사파리 극강 최적화 CSS ---
-# initial_sidebar_state="auto"로 설정하여 기기에 맞게 조절합니다.
+# --- 1. 앱 기본 설정 및 모바일/사파리 최종 보정 CSS ---
 st.set_page_config(page_title="2026 선교헌금 관리", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
     <style>
-    /* 1. 상단 여백 및 헤더 최적화 */
-    .block-container { padding-top: 2rem !important; padding-bottom: 5rem !important; }
+    /* 1. 상단 여백 및 헤더 레이아웃 최적화 */
+    .block-container { padding-top: 3rem !important; padding-bottom: 5rem !important; }
     
-    /* 헤더 전체를 숨기면 버튼도 사라지므로, 배경만 투명하게 하고 높이를 조절합니다. */
-    header[data-testid="stHeader"] {
-        background-color: rgba(0,0,0,0) !important;
-        height: 3.5rem !important;
-    }
+    /* 오른쪽 상단 시스템 점3개 메뉴(MainMenu)를 완전히 제거 */
+    #MainMenu { visibility: hidden; display: none !important; }
+    header { background-color: rgba(0,0,0,0) !important; }
 
-    /* 2. 모바일/사파리에서 메뉴 버튼(햄버거 버튼) 강제 강조 */
-    /* 버튼이 다른 요소에 가려지지 않도록 최상단으로 올리고 색상을 입힙니다. */
-    button[data-testid="stSidebarCollapseIcon"], 
-    button[kind="headerNoPadding"] {
-        display: flex !important;
-        position: fixed !important;
-        top: 10px !important;
-        left: 10px !important;
-        background-color: #ff4b4b !important; /* 빨간색 버튼 */
+    /* 2. 왼쪽 상단 사이드바 열기 버튼만 정확하게 타겟팅 (빨간색 원형) */
+    /* data-testid를 사용하여 오른쪽 메뉴와 혼동되지 않게 합니다. */
+    div[data-testid="stSidebarCollapsedControl"] button {
+        background-color: #ff4b4b !important;
         color: white !important;
         border-radius: 50% !important;
-        width: 45px !important;
-        height: 45px !important;
+        width: 48px !important;
+        height: 48px !important;
+        position: fixed !important;
+        top: 15px !important;  /* 시스템 메뉴와 겹치지 않게 약간 아래로 */
+        left: 15px !important; /* 시스템 메뉴와 겹치지 않게 약간 오른쪽으로 */
         z-index: 999999 !important;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.3) !important;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
+        border: 2px solid white !important;
     }
     
-    /* 버튼 내부 아이콘을 흰색으로 강제 */
-    button[kind="headerNoPadding"] svg {
+    /* 버튼 내부의 화살표 아이콘을 흰색으로 */
+    div[data-testid="stSidebarCollapsedControl"] button svg {
         fill: white !important;
-        width: 25px !important;
-        height: 25px !important;
+        width: 26px !important;
+        height: 26px !important;
     }
 
-    /* 3. 모바일 하단 버튼 가로 배치 (신규/수정/삭제) */
+    /* 3. 모바일 하단 버튼 가로 배치 (데이터 관리용) */
     div[data-testid="stHorizontalBlock"] {
         display: flex !important;
         flex-direction: row !important;
@@ -79,14 +75,18 @@ st.markdown("""
     }
     
     /* 5. 버튼 및 입력창 모바일 최적화 */
-    .stButton button { width: 100% !important; padding: 0px !important; font-size: 13px !important; height: 40px !important; }
-    .stNumberInput input { height: 40px !important; }
+    .stButton button { width: 100% !important; padding: 0px !important; font-size: 13px !important; height: 42px !important; }
+    .stNumberInput input { height: 42px !important; }
     
-    /* 사이드바 메뉴 가독성 */
+    /* 사이드바 내부 스타일 */
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
-        font-size: 16px !important;
-        font-weight: bold !important;
-        padding: 10px 0px !important;
+        font-size: 17px !important;
+        font-weight: 600 !important;
+        padding: 12px 0px !important;
+        color: #333;
+    }
+    @media (prefers-color-scheme: dark) {
+        [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label { color: white; }
     }
     </style>
     """, unsafe_allow_html=True)
@@ -351,12 +351,11 @@ with st.spinner('데이터 동기화 중...'):
     df_income, df_target, df_expense, raw_excel = load_data(FILE_ID)
 
 if df_income is not None:
-    # 사이드바 메뉴 설정
+    # 사이드바 메뉴는 항상 최상단에
     if st.session_state["current_user"] in ["admin", "mission01"]:
         menu_options = ["🔍 개인별 조회", "✍️ 데이터 관리", "📊 결산/주단위집계", "🖨️ 인쇄용 집계표"]
     else: menu_options = ["📊 결산/주단위집계"]
     
-    # [중요] 사이드바 메뉴는 항상 상단에 위치하도록 합니다.
     menu = st.sidebar.radio("메뉴 선택", menu_options)
     
     t_n, t_p, t_a = get_col(df_target, ['이름', '성명'], 0), get_col(df_target, ['직분'], 1), get_col(df_target, ['월별 작정액', '작정액'], 2)
