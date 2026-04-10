@@ -180,13 +180,12 @@ def calculate_details(user_name, df_income, df_target, start_year=2026):
             
     return {"name": user_name, "commit": commit, "alloc": alloc[1:], "labs": lab[1:], "total": total_donated}
 
-# --- 4. 사용자 지정 2x2 완벽 레이아웃 엔진 ---
+# --- 4. 인쇄 포맷 (수정 없음) ---
 def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
     wb = openpyxl.Workbook() 
     ws = wb.active
     ws.title = "개인별 헌금내역"
 
-    # 모든 컬럼 너비 8.13 고정 (A~R열)
     for c in range(1, 19):
         ws.column_dimensions[get_column_letter(c)].width = 8.13
 
@@ -208,16 +207,11 @@ def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
     today_str = datetime.now().strftime("%Y.%m.%d")
     current_row = 1
 
-    # 한 명의 표를 그리는 내부 함수
     def draw_user_block(r, c_off, user):
-        for r_i in range(r, r+9): ws.row_dimensions[r_i].height = 25 # 높이 25 세팅
-
-        # 1. 제목
+        for r_i in range(r, r+9): ws.row_dimensions[r_i].height = 25 
         ws.merge_cells(start_row=r, start_column=1+c_off, end_row=r, end_column=8+c_off)
         title = ws.cell(row=r, column=1+c_off, value="2026년 선교헌금 작정 및 헌금내역")
         title.font = Font(size=16, bold=True, underline="single"); title.alignment = center_align
-        
-        # 2. 날짜 및 합계
         ws.merge_cells(start_row=r+1, start_column=1+c_off, end_row=r+1, end_column=3+c_off)
         ws.cell(row=r+1, column=1+c_off, value=f"({today_str} 기준)").font = Font(bold=True)
         ws.merge_cells(start_row=r+1, start_column=4+c_off, end_row=r+1, end_column=6+c_off)
@@ -225,96 +219,67 @@ def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
         ws.merge_cells(start_row=r+1, start_column=7+c_off, end_row=r+1, end_column=8+c_off)
         t_c = ws.cell(row=r+1, column=7+c_off, value=user['total'])
         t_c.font = Font(bold=True); t_c.number_format = '#,##0'; t_c.alignment = center_align
-        
-        # 테두리
         for row_i in range(r+2, r+8):
             for col_i in range(1+c_off, 9+c_off):
                 c = ws.cell(row=row_i, column=col_i)
                 c.border = thin_border; c.alignment = center_align
-
-        # 3. 표 헤더
         ws.cell(row=r+2, column=1+c_off, value="이름").font = Font(bold=True)
         ws.cell(row=r+2, column=2+c_off, value="월작정액").font = Font(bold=True)
         for i, m in enumerate(["01", "02", "03", "04", "05", "06"], 3): ws.cell(row=r+2, column=i+c_off, value=m).font = Font(bold=True)
         for i, m in enumerate(["07", "08", "09", "10", "11", "12"], 3): ws.cell(row=r+5, column=i+c_off, value=m).font = Font(bold=True)
-
-        # 4. 이름/작정액 병합
         ws.merge_cells(start_row=r+3, start_column=1+c_off, end_row=r+7, end_column=1+c_off)
         ws.cell(row=r+3, column=1+c_off, value=f"{user['name']}\n{user['pos']}").font = Font(bold=True)
         ws.merge_cells(start_row=r+3, start_column=2+c_off, end_row=r+7, end_column=2+c_off)
         c_val = user['commit']
         cc = ws.cell(row=r+3, column=2+c_off, value=c_val if c_val > 0 else "-")
         if c_val > 0: cc.number_format = '#,##0'
-
-        # 5. 월 데이터
         for i in range(6):
             ws.cell(row=r+3, column=i+3+c_off, value=user['labs'][i])
             amt1 = user['alloc'][i]
             c1 = ws.cell(row=r+4, column=i+3+c_off, value=amt1 if amt1 > 0 else "")
             if amt1 > 0: c1.number_format = '#,##0'
-            
             ws.cell(row=r+6, column=i+3+c_off, value=user['labs'][i+6])
             amt2 = user['alloc'][i+6]
             c2 = ws.cell(row=r+7, column=i+3+c_off, value=amt2 if amt2 > 0 else "")
             if amt2 > 0: c2.number_format = '#,##0'
-
-        # 6. 꼬리말
         ws.merge_cells(start_row=r+8, start_column=1+c_off, end_row=r+8, end_column=8+c_off)
         ws.cell(row=r+8, column=1+c_off, value="선교헌금에 관심가져주셔서 감사합니다.").alignment = center_align
 
-    # 2명씩 짝지어서 배치
     for i in range(0, len(user_list), 2):
         user_left = user_list[i]
         user_right = user_list[i+1] if i+1 < len(user_list) else None
-
-        # 세로 절취선 (I열 우측 실선) : 블록 높이 9줄 만큼
         for r_idx in range(current_row, current_row + 9):
             ws.row_dimensions[r_idx].height = 25
             ws.cell(row=r_idx, column=9).border = Border(right=Side(style='thin', color='000000'))
-
-        # 좌우 배치
-        draw_user_block(current_row, 0, user_left)  # A~H
-        if user_right:
-            draw_user_block(current_row, 10, user_right) # K~R
-
+        draw_user_block(current_row, 0, user_left) 
+        if user_right: draw_user_block(current_row, 10, user_right)
         pair_index = i // 2
         if pair_index % 2 == 0:
-            # 첫 번째 줄 (위쪽 2명) -> 3줄 공백(10~12행), 10행 하단 점선
             gap_start = current_row + 9
             for r_idx in range(gap_start, gap_start + 3):
                 ws.row_dimensions[r_idx].height = 25
                 ws.cell(row=r_idx, column=9).border = Border(right=Side(style='thin', color='000000'))
-                
             for col_i in range(1, 19):
                 c = ws.cell(row=gap_start, column=col_i)
                 c.border = Border(bottom=Side(style='dashed', color='888888'), right=c.border.right)
-            
-            current_row += 12 # 9(표) + 3(공백)
-            
+            current_row += 12 
         else:
-            # 두 번째 줄 (아래쪽 2명) -> 1줄 공백(22행), 하단 점선, 그 후 페이지 넘김
             gap_start = current_row + 9
             ws.row_dimensions[gap_start].height = 25
             ws.cell(row=gap_start, column=9).border = Border(right=Side(style='thin', color='000000'))
-            
             for col_i in range(1, 19):
                 c = ws.cell(row=gap_start, column=col_i)
                 c.border = Border(bottom=Side(style='dashed', color='888888'), right=c.border.right)
-                
-            ws.row_breaks.append(Break(id=gap_start)) # 페이지 브레이크
-            current_row += 10 # 9(표) + 1(공백)
+            ws.row_breaks.append(Break(id=gap_start)) 
+            current_row += 10 
 
-    # 프린터 설정: 가로 방향, A4 한 장에 너비 꽉 채우기
     ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
     ws.page_setup.fitToPage = True 
     ws.page_setup.fitToWidth = 1  
     ws.page_setup.fitToHeight = 0 
-    
-    # 좁은 여백 설정
     ws.page_margins.left = 0.25; ws.page_margins.right = 0.25
     ws.page_margins.top = 0.5; ws.page_margins.bottom = 0.5
     ws.print_options.horizontalCentered = True
-    
     output = io.BytesIO(); wb.save(output); return output.getvalue()
 
 # --- 5. 앱 화면 구성 ---
@@ -337,17 +302,48 @@ if df_income is not None:
         if selected:
             res = calculate_details(selected, df_income, df_target)
             if res:
-                st.subheader(f"📄 {res['name']} 성도님"); st.write(f"월 작정액: {int(res['commit']):,}원 | 총 헌금액: {int(res['total']):,}원")
-                for r in [0, 6]:
-                    cols = st.columns(6)
-                    for i in range(6):
-                        m = r + i
-                        with cols[i]:
-                            st.write(f"**{m+1}월**"); st.markdown(f"<small>{str(res['labs'][m]).replace(chr(10), '<br>')}</small>", unsafe_allow_html=True); st.write(f"{int(res['alloc'][m]):,}원")
+                # [수정] 1. 직분 정보 가져와서 제목에 붙이기
+                user_info = df_target[df_target[t_n].astype(str).str.strip() == selected]
+                pos = clean_str(user_info.iloc[0].get(t_p, "")) if not user_info.empty else ""
+                pos_str = f"({pos})" if pos else ""
+                
+                st.subheader(f"📄 {res['name']}{pos_str}")
+                
+                # [수정] 2. 기준일 문구 및 포맷 맞춤
+                today_str = datetime.now().strftime("%Y.%m.%d")
+                st.write(f"기준일({today_str}) 현재 / 월 작정액: {int(res['commit']):,}원 / 총 헌금액: {int(res['total']):,}원")
+                
+                # [수정] 3. 표(Table) 형태로 테두리 긋기
+                html = "<table style='width:100%; border-collapse: collapse; text-align: center; margin-top: 15px;'>"
+                
+                # 상단 1~6월
+                html += "<tr style='background-color: #f8f9fa;'>"
+                for i in range(1, 7): html += f"<th style='border: 1px solid #ddd; padding: 10px;'>{i}월</th>"
+                html += "</tr><tr>"
+                for i in range(6):
+                    lab = str(res['labs'][i]).replace('\n', '<br>')
+                    amt = f"{int(res['alloc'][i]):,}원" if res['alloc'][i] > 0 else "0원"
+                    content = f"<span style='font-size:0.85em; color:#888;'>{lab}</span><br><b>{amt}</b>" if lab else f"<b>{amt}</b>"
+                    html += f"<td style='border: 1px solid #ddd; padding: 15px;'>{content}</td>"
+                html += "</tr>"
+                
+                # 하단 7~12월
+                html += "<tr style='background-color: #f8f9fa;'>"
+                for i in range(7, 13): html += f"<th style='border: 1px solid #ddd; padding: 10px;'>{i}월</th>"
+                html += "</tr><tr>"
+                for i in range(6, 12):
+                    lab = str(res['labs'][i]).replace('\n', '<br>')
+                    amt = f"{int(res['alloc'][i]):,}원" if res['alloc'][i] > 0 else "0원"
+                    content = f"<span style='font-size:0.85em; color:#888;'>{lab}</span><br><b>{amt}</b>" if lab else f"<b>{amt}</b>"
+                    html += f"<td style='border: 1px solid #ddd; padding: 15px;'>{content}</td>"
+                html += "</tr>"
+                html += "</table>"
+                
+                st.markdown(html, unsafe_allow_html=True)
 
     elif menu == "✍️ 데이터 관리":
         tab1, tab2, tab3 = st.tabs(["💰 헌금 수입", "📉 지출 내역", "👤 작정액 관리"])
-        with tab1: # 헌금 수입 관리
+        with tab1: 
             if st.session_state.mode_inc is None:
                 df_view = df_income.copy()
                 if '날짜' in df_view.columns: df_view['날짜'] = df_view['날짜'].apply(format_date_str)
@@ -383,7 +379,7 @@ if df_income is not None:
                     if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '헌금수입', df_income)): st.session_state.mode_inc = None; st.rerun()
                 if st.button("취소"): st.session_state.mode_inc = None; st.rerun()
 
-        with tab2: # 지출 관리 
+        with tab2:
             if st.session_state.mode_exp is None:
                 df_exp_view = df_expense.copy()
                 if '날짜' in df_exp_view.columns: df_exp_view['날짜'] = df_exp_view['날짜'].apply(format_date_str)
