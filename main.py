@@ -11,17 +11,32 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from datetime import datetime
 
-# --- 1. 앱 기본 설정 및 모바일 극강 최적화 CSS ---
-st.set_page_config(page_title="2026 선교헌금 관리", layout="wide")
+# --- 1. 앱 기본 설정 및 모바일 최적화 CSS ---
+# initial_sidebar_state="expanded"를 통해 모바일에서도 메뉴가 먼저 보이도록 유도합니다.
+st.set_page_config(page_title="2026 선교헌금 관리", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
-    /* 1. 상단 여백 제거 및 헤더 숨김 (모바일 화면 확보) */
+    /* 1. 상단 여백 제거 및 헤더 숨김 */
     .block-container { padding-top: 0.5rem !important; padding-bottom: 5rem !important; }
     header { visibility: hidden; }
     #MainMenu { visibility: hidden; }
     
-    /* 2. 모바일에서 버튼 4개를 무조건 한 줄로 가로 배치 (줄바꿈 방지) */
+    /* 2. 모바일 메뉴 버튼(화살표) 강조 스타일 */
+    /* 사이드바가 접혀있을 때 왼쪽 상단에 나타나는 버튼을 강조하여 메뉴 위치를 알립니다. */
+    button[kind="headerNoPadding"] {
+        background-color: #ff4b4b !important;
+        color: white !important;
+        border-radius: 50% !important;
+        width: 38px !important;
+        height: 38px !important;
+        top: 8px !important;
+        left: 8px !important;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2) !important;
+        z-index: 999999;
+    }
+
+    /* 3. 모바일에서 버튼 4개를 무조건 한 줄로 가로 배치 */
     div[data-testid="stHorizontalBlock"] {
         display: flex !important;
         flex-direction: row !important;
@@ -34,7 +49,7 @@ st.markdown("""
         min-width: 0 !important;
     }
     
-    /* 3. 하단 고정 영역 스타일 (Footer) */
+    /* 4. 하단 고정 영역 스타일 (Footer) */
     .fixed-footer {
         position: fixed;
         bottom: 0;
@@ -49,9 +64,15 @@ st.markdown("""
         .fixed-footer { background-color: #1e1e1e !important; border-top: 1px solid #333 !important; }
     }
     
-    /* 4. 입력창 및 버튼 높이 최적화 */
+    /* 5. 입력창 및 버튼 높이 최적화 */
     .stButton button { width: 100% !important; padding: 0px !important; font-size: 13px !important; height: 40px !important; }
     .stNumberInput input { height: 40px !important; }
+    
+    /* 6. 사이드바 라디오 버튼 텍스트 크기 조정 (모바일 가독성) */
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+        font-size: 15px !important;
+        padding: 5px 0px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
