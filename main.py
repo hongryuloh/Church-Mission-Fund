@@ -100,7 +100,7 @@ if "current_user" not in st.session_state:
 if not st.session_state["authenticated"]:
     col1, col2, col3 = st.columns([1, 2, 1]) 
     with col2:
-        st.title(f"⛪ 선교헌금 관리")
+        st.title(f"선교헌금관리")
         st.info("🔒ID/비밀번호 입력")
         with st.form("login_form"):
             input_id = st.text_input("아이디 (ID)")
