@@ -25,12 +25,26 @@ st.set_page_config(
 
 st.markdown(f"""
     <style>
-    /* 1. 상단 여백 및 헤더 레이아웃 */
-    .block-container {{ padding-top: 3rem !important; padding-bottom: 5rem !important; }}
+    /* 1. 상단 여백 및 헤더 레이아웃 최적화 */
+    .block-container {{ 
+        padding-top: 2rem !important; 
+        padding-bottom: 5rem !important;
+        padding-left: 0.5rem !important; /* 모바일 가로 공간 확보 */
+        padding-right: 0.5rem !important;
+    }}
     #MainMenu {{ visibility: hidden; display: none !important; }}
     header {{ background-color: rgba(0,0,0,0) !important; }}
 
-    /* 2. 왼쪽 상단 사이드바 버튼 강조 (빨간색 원형) */
+    /* 2. 로그인 화면 제목 최적화 (한 줄 표시) */
+    h1 {{
+        font-size: 1.6rem !important; /* 글자 크기를 살짝 줄임 */
+        white-space: nowrap !important; /* 강제 한 줄 표시 */
+        text-align: center !important;
+        margin-bottom: 1rem !important;
+        letter-spacing: -1px; /* 글자 간격 좁힘 */
+    }}
+
+    /* 3. 왼쪽 상단 사이드바 버튼 강조 (빨간색 원형) */
     div[data-testid="stSidebarCollapsedControl"] button {{
         background-color: #ff4b4b !important;
         color: white !important;
@@ -51,7 +65,7 @@ st.markdown(f"""
         height: 26px !important;
     }}
 
-    /* 3. 모바일 하단 버튼 가로 배치 */
+    /* 4. 모바일 하단 버튼 가로 배치 */
     div[data-testid="stHorizontalBlock"] {{
         display: flex !important;
         flex-direction: row !important;
@@ -64,7 +78,7 @@ st.markdown(f"""
         min-width: 0 !important;
     }}
     
-    /* 4. 하단 고정 바 (Footer) */
+    /* 5. 하단 고정 바 (Footer) */
     .fixed-footer {{
         position: fixed;
         bottom: 0;
@@ -79,6 +93,7 @@ st.markdown(f"""
         .fixed-footer {{ background-color: #1e1e1e !important; border-top: 1px solid #333 !important; }}
     }}
     
+    /* 6. 입력창 및 버튼 모바일 높이 최적화 */
     .stButton button {{ width: 100% !important; padding: 0px !important; font-size: 13px !important; height: 42px !important; }}
     .stNumberInput input {{ height: 42px !important; }}
     
@@ -98,10 +113,11 @@ if "current_user" not in st.session_state:
 
 # (2) 로그인 화면 구성
 if not st.session_state["authenticated"]:
-    col1, col2, col3 = st.columns([1, 2, 1]) 
+    # 컬럼 비율을 조정하여 중앙 박스가 더 넓게 보이도록 수정 ([1, 2, 1] -> [0.05, 0.9, 0.05])
+    col1, col2, col3 = st.columns([0.05, 0.9, 0.05]) 
     with col2:
-        st.title(f"선교헌금관리")
-        st.info("🔒ID/비밀번호 입력")
+        st.title(f"⛪ {TARGET_YEAR} 선교헌금 관리")
+        st.info("🔒 접근 권한이 필요합니다. ID와 비밀번호를 입력해 주세요.")
         with st.form("login_form"):
             input_id = st.text_input("아이디 (ID)")
             input_pwd = st.text_input("비밀번호 (Password)", type="password")
@@ -519,7 +535,7 @@ if df_income is not None:
             elif st.session_state.mode_tgt == 'edit':
                 curr = df_target.iloc[st.session_state.edit_idx_tgt]
                 with st.form("tgt_edit"):
-                    n, p, a = st.text_input("이름", value=str(curr.get(t_n, ''))), st.text_input("직분", value=str(curr.get(t_p, ''))), st.number_input("월별 작정액", value=int(pd.to_numeric(curr.get(t_a, 0), errors='coerce') or 0), step=1000)
+                    n, p, a = st.text_input("이름", value=str(curr.get(t_n, ''))), st.text_input("직분", value=str(curr.get(t_p, ''))), st.number_input("월별 작정액", value=int(pd.to_numeric(curr.get(t_a, 0), errors='coerce') or 0), step=10000)
                     if st.form_submit_button("✅ 수정 완료"):
                         df_target.loc[df_target.index[st.session_state.edit_idx_tgt], [t_n, t_p, t_a]] = [n, p, a]
                         if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '작정액', df_target)): st.session_state.mode_tgt = None; st.rerun()
@@ -535,7 +551,6 @@ if df_income is not None:
         df_inc_calc['amt'] = pd.to_numeric(df_inc_calc[i_a], errors='coerce').fillna(0)
         df_exp_calc['amt'] = pd.to_numeric(df_exp_calc[e_a], errors='coerce').fillna(0)
         
-        # 날짜 비교 변수화
         c_inc = df_inc_calc[(df_inc_calc['날짜'].astype(str) < f"{TARGET_YEAR}-01-01") | (df_inc_calc[i_n].astype(str).str.contains('전년이월'))]['amt'].sum()
         c_exp = df_exp_calc[(df_exp_calc[e_d].astype(str) < f"{TARGET_YEAR}-01-01") | (df_exp_calc[e_n].astype(str).str.contains('전년이월'))]['amt'].sum()
         carryover_bal = c_inc - c_exp
