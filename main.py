@@ -117,7 +117,7 @@ if not st.session_state["authenticated"]:
     col1, col2, col3 = st.columns([0.05, 0.9, 0.05]) 
     with col2:
         st.title(f"⛪ {TARGET_YEAR} 선교헌금 관리")
-        st.info("🔒 접근 권한이 필요합니다. ID와 비밀번호를 입력해 주세요.")
+        st.info("🔒ID와 비밀번호를 입력해 주세요.")
         with st.form("login_form"):
             input_id = st.text_input("아이디 (ID)")
             input_pwd = st.text_input("비밀번호 (Password)", type="password")
