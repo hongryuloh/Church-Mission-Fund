@@ -39,6 +39,10 @@ def format_date_str(x):
     if len(x_str) == 6 and x_str.isdigit(): return f"{x_str[:4]}-{x_str[4:6]}-01"
     return x_str
 
+def fmt(val):
+    if pd.isna(val) or val == 0: return "-"
+    return f"{int(val):,}"
+
 # --- 2. 데이터 로드 ---
 @st.cache_data(ttl=60) 
 def load_data(file_id):
@@ -155,7 +159,6 @@ def calculate_details(user_name, df_income, df_target, start_year=2026):
     alloc, lab = [0.0]*13, [""]*13
     sorted_m = sorted([m for m in paid.keys() if str(m).startswith(str(start_year))])
     
-    # 폭포수 vs 다이렉트 매칭
     if commit > 0:
         ptr = 1
         for pm in sorted_m:
@@ -180,14 +183,13 @@ def calculate_details(user_name, df_income, df_target, start_year=2026):
             
     return {"name": user_name, "commit": commit, "alloc": alloc[1:], "labs": lab[1:], "total": total_donated}
 
-# --- 4. 인쇄 포맷 (수정 없음) ---
+# --- 4. 인쇄 포맷 ---
 def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
     wb = openpyxl.Workbook() 
     ws = wb.active
     ws.title = "개인별 헌금내역"
 
-    for c in range(1, 19):
-        ws.column_dimensions[get_column_letter(c)].width = 8.13
+    for c in range(1, 19): ws.column_dimensions[get_column_letter(c)].width = 8.13
 
     thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     center_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
@@ -292,9 +294,10 @@ with st.spinner('데이터 동기화 중...'):
     df_income, df_target, df_expense, raw_excel = load_data(FILE_ID)
 
 if df_income is not None:
-    menu = st.sidebar.radio("메뉴", ["🔍 개인별 조회", "✍️ 데이터 관리", "📊 결산 및 통계", "🖨️ 인쇄용 집계표"])
+    menu = st.sidebar.radio("메뉴", ["🔍 개인별 조회", "✍️ 데이터 관리", "📊 결산/주단위집계", "🖨️ 인쇄용 집계표"])
     t_n, t_p, t_a = get_col(df_target, ['이름', '성명'], 0), get_col(df_target, ['직분'], 1), get_col(df_target, ['월별 작정액', '작정액'], 2)
     i_n, i_y, i_a = get_col(df_income, ['이름', '성명'], 2), get_col(df_income, ['년월'], 1), get_col(df_income, ['금액'], 3)
+    e_n, e_d, e_a = get_col(df_expense, ['내역'], 2), get_col(df_expense, ['날짜'], 0), get_col(df_expense, ['금액'], 3)
 
     if menu == "🔍 개인별 조회":
         names = [n for n in df_target[t_n].dropna().astype(str).str.strip().unique().tolist() if n and n != 'nan' and n != '합계']
@@ -302,21 +305,15 @@ if df_income is not None:
         if selected:
             res = calculate_details(selected, df_income, df_target)
             if res:
-                # [수정] 1. 직분 정보 가져와서 제목에 붙이기
                 user_info = df_target[df_target[t_n].astype(str).str.strip() == selected]
                 pos = clean_str(user_info.iloc[0].get(t_p, "")) if not user_info.empty else ""
                 pos_str = f"({pos})" if pos else ""
+                st.subheader(f"📄 {res['name']} {pos_str}")
                 
-                st.subheader(f"📄 {res['name']}{pos_str}")
-                
-                # [수정] 2. 기준일 문구 및 포맷 맞춤
                 today_str = datetime.now().strftime("%Y.%m.%d")
                 st.write(f"기준일({today_str}) 현재 / 월 작정액: {int(res['commit']):,}원 / 총 헌금액: {int(res['total']):,}원")
                 
-                # [수정] 3. 표(Table) 형태로 테두리 긋기
                 html = "<table style='width:100%; border-collapse: collapse; text-align: center; margin-top: 15px;'>"
-                
-                # 상단 1~6월
                 html += "<tr style='background-color: #f8f9fa;'>"
                 for i in range(1, 7): html += f"<th style='border: 1px solid #ddd; padding: 10px;'>{i}월</th>"
                 html += "</tr><tr>"
@@ -326,8 +323,6 @@ if df_income is not None:
                     content = f"<span style='font-size:0.85em; color:#888;'>{lab}</span><br><b>{amt}</b>" if lab else f"<b>{amt}</b>"
                     html += f"<td style='border: 1px solid #ddd; padding: 15px;'>{content}</td>"
                 html += "</tr>"
-                
-                # 하단 7~12월
                 html += "<tr style='background-color: #f8f9fa;'>"
                 for i in range(7, 13): html += f"<th style='border: 1px solid #ddd; padding: 10px;'>{i}월</th>"
                 html += "</tr><tr>"
@@ -338,7 +333,6 @@ if df_income is not None:
                     html += f"<td style='border: 1px solid #ddd; padding: 15px;'>{content}</td>"
                 html += "</tr>"
                 html += "</table>"
-                
                 st.markdown(html, unsafe_allow_html=True)
 
     elif menu == "✍️ 데이터 관리":
@@ -442,11 +436,99 @@ if df_income is not None:
                         df_target.loc[df_target.index[st.session_state.edit_idx_tgt], [t_n, t_p, t_a]] = [n, p, a]
                         if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '작정액', df_target)): st.session_state.mode_tgt = None; st.rerun()
 
-    elif menu == "📊 결산 및 통계":
-        t_inc = pd.to_numeric(df_income[i_a], errors='coerce').sum()
-        t_exp = pd.to_numeric(df_expense['금액'], errors='coerce').sum() if '금액' in df_expense.columns else 0
-        st.subheader("📊 전체 요약")
-        c1, c2, c3 = st.columns(3); c1.metric("총 수입", f"{int(t_inc):,} 원"); c2.metric("총 지출", f"{int(t_exp):,} 원"); c3.metric("현재 잔액", f"{int(t_inc - t_exp):,} 원")
+    elif menu == "📊 결산/주단위집계":
+        tab1, tab2 = st.tabs(["📅 월별 결산내역", "📆 주단위 결산내역"])
+        
+        # 데이터 전처리 (금액 숫자 변환)
+        df_inc_calc = df_income.copy()
+        df_exp_calc = df_expense.copy()
+        df_inc_calc['amt'] = pd.to_numeric(df_inc_calc[i_a], errors='coerce').fillna(0)
+        df_exp_calc['amt'] = pd.to_numeric(df_exp_calc[e_a], errors='coerce').fillna(0)
+        
+        # 전년이월 계산 (날짜가 2026-01-01 이전이거나, 이름/내역이 '전년이월'인 경우)
+        c_inc = df_inc_calc[(df_inc_calc['날짜'].astype(str) < '2026-01-01') | (df_inc_calc[i_n].astype(str).str.contains('전년이월'))]['amt'].sum()
+        c_exp = df_exp_calc[(df_exp_calc[e_d].astype(str) < '2026-01-01') | (df_exp_calc[e_n].astype(str).str.contains('전년이월'))]['amt'].sum()
+        carryover_bal = c_inc - c_exp
+        
+        # 2026년 실제 데이터 필터링
+        df_inc_26 = df_inc_calc[(df_inc_calc['날짜'].astype(str) >= '2026-01-01') & (~df_inc_calc[i_n].astype(str).str.contains('전년이월'))]
+        df_exp_26 = df_exp_calc[(df_exp_calc[e_d].astype(str) >= '2026-01-01') & (~df_exp_calc[e_n].astype(str).str.contains('전년이월'))]
+        
+        with tab1:
+            st.subheader("선교헌금 결산내역")
+            monthly_data = []
+            monthly_data.append({"월별": "전년이월", "수입": c_inc, "지출": c_exp, "잔액": carryover_bal})
+            
+            cur_bal = carryover_bal
+            tot_inc, tot_exp = 0, 0
+            
+            for m in range(1, 13):
+                ym = f"2026{m:02d}"
+                inc = df_inc_26[df_inc_26[i_y] == ym]['amt'].sum()
+                exp = df_exp_26[df_exp_26['년월'] == ym]['amt'].sum()
+                
+                if inc == 0 and exp == 0 and m > datetime.now().month:
+                    monthly_data.append({"월별": ym, "수입": 0, "지출": 0, "잔액": 0})
+                else:
+                    cur_bal += (inc - exp)
+                    tot_inc += inc
+                    tot_exp += exp
+                    monthly_data.append({"월별": ym, "수입": inc, "지출": exp, "잔액": cur_bal})
+            
+            monthly_data.append({"월별": "합계", "수입": tot_inc, "지출": tot_exp, "잔액": cur_bal})
+            
+            # HTML 테이블 렌더링
+            h1 = "<table style='width:100%; border-collapse: collapse; text-align: center; border: 2px solid #a4b7c6; font-size: 15px;'>"
+            h1 += "<tr style='background-color: #dbe5f1;'><th style='border: 1px solid #a4b7c6; padding: 10px;'>월별</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>수입</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>지출</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>잔액</th></tr>"
+            for row in monthly_data:
+                bg = "#b4c6e7" if row['월별'] == "합계" else "#ffffff"
+                bg = "#f4f5f7" if row['월별'] == "전년이월" else bg
+                h1 += f"<tr style='background-color: {bg};'>"
+                h1 += f"<td style='border: 1px solid #a4b7c6; padding: 8px;'>{row['월별']}</td>"
+                h1 += f"<td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['수입'])}</td>"
+                h1 += f"<td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['지출'])}</td>"
+                h1 += f"<td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['잔액'])}</td></tr>"
+            h1 += "</table>"
+            st.markdown(h1, unsafe_allow_html=True)
+            
+        with tab2:
+            st.subheader("선교헌금 주단위 결산내역")
+            
+            # 수입/지출 발생한 고유 날짜 추출
+            d_inc = df_inc_26[df_inc_26['amt'] > 0]['날짜'].tolist()
+            d_exp = df_exp_26[df_exp_26['amt'] > 0][e_d].tolist()
+            all_dates = sorted(list(set([d for d in d_inc + d_exp if str(d).startswith('2026')])))
+            
+            weekly_data = []
+            weekly_data.append({"월별": "전년이월", "수입": c_inc, "지출": c_exp, "잔액": carryover_bal})
+            
+            cur_bal = carryover_bal
+            tot_inc, tot_exp = 0, 0
+            
+            for d in all_dates:
+                d_str = format_date_str(d)
+                inc = df_inc_26[df_inc_26['날짜'].apply(format_date_str) == d_str]['amt'].sum()
+                exp = df_exp_26[df_exp_26[e_d].apply(format_date_str) == d_str]['amt'].sum()
+                
+                cur_bal += (inc - exp)
+                tot_inc += inc
+                tot_exp += exp
+                weekly_data.append({"월별": d_str, "수입": inc, "지출": exp, "잔액": cur_bal})
+                
+            weekly_data.append({"월별": "합계", "수입": tot_inc, "지출": tot_exp, "잔액": cur_bal})
+
+            h2 = "<table style='width:100%; border-collapse: collapse; text-align: center; border: 2px solid #a4b7c6; font-size: 15px;'>"
+            h2 += "<tr style='background-color: #dbe5f1;'><th style='border: 1px solid #a4b7c6; padding: 10px;'>월별</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>수입</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>지출</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>잔액</th></tr>"
+            for row in weekly_data:
+                bg = "#b4c6e7" if row['월별'] == "합계" else "#ffffff"
+                bg = "#f4f5f7" if row['월별'] == "전년이월" else bg
+                h2 += f"<tr style='background-color: {bg};'>"
+                h2 += f"<td style='border: 1px solid #a4b7c6; padding: 8px;'>{row['월별']}</td>"
+                h2 += f"<td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['수입'])}</td>"
+                h2 += f"<td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['지출'])}</td>"
+                h2 += f"<td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['잔액'])}</td></tr>"
+            h2 += "</table>"
+            st.markdown(h2, unsafe_allow_html=True)
 
     elif menu == "🖨️ 인쇄용 집계표":
         st.subheader("🖨️ 인쇄용 엑셀 다운로드 (자동 가로 4명 출력)")
