@@ -16,7 +16,7 @@ from datetime import datetime
 TARGET_YEAR = 2026 
 # ==========================================
 
-# --- 1. 앱 기본 설정 및 모바일/사파리 최적화 CSS ---
+# --- 1. 앱 기본 설정 및 모바일/사파리 극강 최적화 CSS ---
 st.set_page_config(
     page_title=f"{TARGET_YEAR} 선교헌금 관리", 
     layout="wide", 
@@ -25,26 +25,21 @@ st.set_page_config(
 
 st.markdown(f"""
     <style>
-    /* 1. 상단 여백 및 헤더 레이아웃 최적화 */
-    .block-container {{ 
-        padding-top: 2rem !important; 
-        padding-bottom: 5rem !important;
-        padding-left: 0.5rem !important; /* 모바일 가로 공간 확보 */
-        padding-right: 0.5rem !important;
-    }}
+    /* 1. 상단 여백 및 헤더 레이아웃 */
+    .block-container {{ padding-top: 2rem !important; padding-bottom: 5rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }}
     #MainMenu {{ visibility: hidden; display: none !important; }}
     header {{ background-color: rgba(0,0,0,0) !important; }}
 
-    /* 2. 로그인 화면 제목 최적화 (한 줄 표시) */
+    /* 로그인 화면 제목 최적화 (한 줄 표시) */
     h1 {{
-        font-size: 1.6rem !important; /* 글자 크기를 살짝 줄임 */
-        white-space: nowrap !important; /* 강제 한 줄 표시 */
+        font-size: 1.7rem !important; 
+        white-space: nowrap !important; 
         text-align: center !important;
         margin-bottom: 1rem !important;
-        letter-spacing: -1px; /* 글자 간격 좁힘 */
+        letter-spacing: -1px;
     }}
 
-    /* 3. 왼쪽 상단 사이드바 버튼 강조 (빨간색 원형) */
+    /* 2. 왼쪽 상단 사이드바 버튼 강조 (빨간색 원형) */
     div[data-testid="stSidebarCollapsedControl"] button {{
         background-color: #ff4b4b !important;
         color: white !important;
@@ -65,7 +60,7 @@ st.markdown(f"""
         height: 26px !important;
     }}
 
-    /* 4. 모바일 하단 버튼 가로 배치 */
+    /* 3. 모바일 하단 버튼 가로 배치 */
     div[data-testid="stHorizontalBlock"] {{
         display: flex !important;
         flex-direction: row !important;
@@ -78,7 +73,7 @@ st.markdown(f"""
         min-width: 0 !important;
     }}
     
-    /* 5. 하단 고정 바 (Footer) */
+    /* 4. 하단 고정 바 (Footer) */
     .fixed-footer {{
         position: fixed;
         bottom: 0;
@@ -93,14 +88,13 @@ st.markdown(f"""
         .fixed-footer {{ background-color: #1e1e1e !important; border-top: 1px solid #333 !important; }}
     }}
     
-    /* 6. 입력창 및 버튼 모바일 높이 최적화 */
     .stButton button {{ width: 100% !important; padding: 0px !important; font-size: 13px !important; height: 42px !important; }}
     .stNumberInput input {{ height: 42px !important; }}
     
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {{
-        font-size: 17px !important;
+        font-size: 16px !important;
         font-weight: 600 !important;
-        padding: 12px 0px !important;
+        padding: 10px 0px !important;
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -113,11 +107,11 @@ if "current_user" not in st.session_state:
 
 # (2) 로그인 화면 구성
 if not st.session_state["authenticated"]:
-    # 컬럼 비율을 조정하여 중앙 박스가 더 넓게 보이도록 수정 ([1, 2, 1] -> [0.05, 0.9, 0.05])
-    col1, col2, col3 = st.columns([0.05, 0.9, 0.05]) 
+    # 좌우 여백을 최소화하여 제목 공간 확보
+    col1, col2, col3 = st.columns([0.1, 3, 0.1]) 
     with col2:
         st.title(f"⛪ {TARGET_YEAR} 선교헌금 관리")
-        st.info("🔒ID와 비밀번호를 입력해 주세요.")
+        st.info("🔒 ID와 비밀번호를 입력해 주세요.")
         with st.form("login_form"):
             input_id = st.text_input("아이디 (ID)")
             input_pwd = st.text_input("비밀번호 (Password)", type="password")
@@ -128,13 +122,13 @@ if not st.session_state["authenticated"]:
                     st.session_state["current_user"] = input_id
                     st.rerun() 
                 else:
-                    st.error("❌ 아이디 또는 비밀번호가 틀렸습니다.")
+                    st.error("❌ 정보가 올바르지 않습니다.")
     st.stop() 
 
 # 사이드바 구성
 with st.sidebar:
     st.title(f"⛪ {TARGET_YEAR} 선교헌금")
-    st.write(f"👤 **{st.session_state['current_user']}**님 접속 중")
+    st.write(f"👤 **{st.session_state['current_user']}**님")
     if st.button("로그아웃", use_container_width=True):
         st.session_state["authenticated"] = False
         st.session_state["current_user"] = ""
@@ -366,9 +360,14 @@ with st.spinner('데이터 동기화 중...'):
     df_income, df_target, df_expense, raw_excel = load_data(FILE_ID)
 
 if df_income is not None:
-    if st.session_state["current_user"] in ["admin", "mission01"]:
-        menu_options = ["🔍 개인별 조회", "✍️ 데이터 관리", "📊 결산/주단위집계", "🖨️ 인쇄용 집계표"]
-    else: menu_options = ["📊 결산/주단위집계"]
+    # (1) 메뉴 권한 및 순서 설정
+    user_id = st.session_state["current_user"]
+    if user_id == "admin":
+        menu_options = ["✍️ 데이터 관리", "📊 결산/주단위집계", "🔍 개인별 조회", "🖨️ 인쇄용 집계표"]
+    elif user_id == "mission01":
+        menu_options = ["✍️ 데이터 관리", "📊 결산/주단위집계", "🔍 개인별 조회"]
+    else:
+        menu_options = ["📊 결산/주단위집계"]
     
     menu = st.sidebar.radio("메뉴 선택", menu_options)
     
@@ -376,32 +375,8 @@ if df_income is not None:
     i_n, i_y, i_a = get_col(df_income, ['이름', '성명'], 2), get_col(df_income, ['년월'], 1), get_col(df_income, ['금액'], 3)
     e_n, e_d, e_a = get_col(df_expense, ['내역'], 2), get_col(df_expense, ['날짜'], 0), get_col(df_expense, ['금액'], 3)
 
-    if menu == "🔍 개인별 조회":
-        names = [n for n in df_target[t_n].dropna().astype(str).str.strip().unique().tolist() if n and n != 'nan' and n != '합계']
-        selected = st.selectbox("이름을 선택하세요", names)
-        if selected:
-            res = calculate_details(selected, df_income, df_target)
-            if res:
-                u_info = df_target[df_target[t_n].astype(str).str.strip() == selected]
-                pos = clean_str(u_info.iloc[0].get(t_p, "")) if not u_info.empty else ""
-                st.subheader(f"📄 {res['name']} ({pos})")
-                st.write(f"기준일({datetime.now().strftime('%Y.%m.%d')}) 현재 / 월 작정액: {int(res['commit']):,}원 / 총 헌금액: {int(res['total']):,}원")
-                html = "<table style='width:100%; border-collapse: collapse; text-align: center; margin-top: 15px; background-color: #ffffff; color: #333333;'>"
-                html += "<tr style='background-color: #f8f9fa;'>"
-                for i in range(1, 7): html += f"<th style='border: 1px solid #ddd; padding: 10px;'>{i}월</th>"
-                html += "</tr><tr>"
-                for i in range(6):
-                    lab, amt = str(res['labs'][i]).replace('\n', '<br>'), f"{int(res['alloc'][i]):,}원" if res['alloc'][i] > 0 else "0원"
-                    html += f"<td style='border: 1px solid #ddd; padding: 15px;'><span style='font-size:0.85em; color:#888;'>{lab}</span><br><b>{amt}</b></td>"
-                html += "</tr><tr style='background-color: #f8f9fa;'>"
-                for i in range(7, 13): html += f"<th style='border: 1px solid #ddd; padding: 10px;'>{i}월</th>"
-                html += "</tr><tr>"
-                for i in range(6, 12):
-                    lab, amt = str(res['labs'][i]).replace('\n', '<br>'), f"{int(res['alloc'][i]):,}원" if res['alloc'][i] > 0 else "0원"
-                    html += f"<td style='border: 1px solid #ddd; padding: 15px;'><span style='font-size:0.85em; color:#888;'>{lab}</span><br><b>{amt}</b></td>"
-                html += "</tr></table>"; st.markdown(html, unsafe_allow_html=True)
-
-    elif menu == "✍️ 데이터 관리":
+    # 1. 데이터 관리
+    if menu == "✍️ 데이터 관리":
         tab1, tab2, tab3 = st.tabs(["💰 헌금 수입", "📉 지출 내역", "👤 작정액 관리"])
         with tab1: 
             if st.session_state.mode_inc is None:
@@ -545,6 +520,7 @@ if df_income is not None:
                     df_target = df_target.drop(df_target.index[st.session_state.edit_idx_tgt])
                     if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '작정액', df_target)): st.session_state.mode_tgt = None; st.rerun()
 
+    # 2. 결산/주단위집계
     elif menu == "📊 결산/주단위집계":
         tab1, tab2 = st.tabs(["📅 월별 결산내역", "📆 주단위 결산내역"])
         df_inc_calc, df_exp_calc = df_income.copy(), df_expense.copy()
@@ -559,7 +535,7 @@ if df_income is not None:
         df_exp_target = df_exp_calc[(df_exp_calc[e_d].astype(str) >= f"{TARGET_YEAR}-01-01") & (~df_exp_calc[e_n].astype(str).str.contains('전년이월'))]
         
         with tab1:
-            st.subheader(f"{TARGET_YEAR}년 선교헌금 결산내역")
+            st.subheader(f"{TARGET_YEAR}년 선교헌금 월별결산")
             monthly_data = [{"월별": "전년이월", "수입": carryover_bal, "지출": 0, "잔액": carryover_bal}]
             cur_bal, tot_inc, tot_exp = carryover_bal, carryover_bal, 0
             for m in range(1, 13):
@@ -577,7 +553,7 @@ if df_income is not None:
             st.markdown(h1 + "</table>", unsafe_allow_html=True)
             
         with tab2:
-            st.subheader(f"{TARGET_YEAR}년 선교헌금 주단위 결산내역")
+            st.subheader(f"{TARGET_YEAR}년 선교헌금 주단위결산")
             d_inc_list, d_exp_list = [format_date_str(d) for d in df_inc_target[df_inc_target['amt'] > 0]['날짜']], [format_date_str(d) for d in df_exp_target[df_exp_target['amt'] > 0][e_d]]
             all_dates = sorted(list(set([d for d in d_inc_list + d_exp_list if str(d).startswith(str(TARGET_YEAR))])))
             weekly_temp = []
@@ -594,12 +570,39 @@ if df_income is not None:
                 h2 += f"<tr style='background-color: {bg};'><td style='border: 1px solid #a4b7c6; padding: 8px;'>{row['월별']}</td><td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['수입'])}</td><td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['지출'])}</td><td style='border: 1px solid #a4b7c6; padding: 8px; text-align: right;'>{fmt(row['잔액'])}</td></tr>"
             st.markdown(h2 + "</table>", unsafe_allow_html=True)
 
+    # 3. 개인별 조회
+    elif menu == "🔍 개인별 조회":
+        names = [n for n in df_target[t_n].dropna().astype(str).str.strip().unique().tolist() if n and n != 'nan' and n != '합계']
+        selected = st.selectbox("성함을 선택하세요", names)
+        if selected:
+            res = calculate_details(selected, df_income, df_target)
+            if res:
+                u_info = df_target[df_target[t_n].astype(str).str.strip() == selected]
+                pos = clean_str(u_info.iloc[0].get(t_p, "")) if not u_info.empty else ""
+                st.subheader(f"📄 {res['name']} ({pos})")
+                st.write(f"기준일({datetime.now().strftime('%Y.%m.%d')}) / 월 작정: {int(res['commit']):,}원 / 총액: {int(res['total']):,}원")
+                html = "<table style='width:100%; border-collapse: collapse; text-align: center; margin-top: 15px; background-color: #ffffff; color: #333333;'>"
+                html += "<tr style='background-color: #f8f9fa;'>"
+                for i in range(1, 7): html += f"<th style='border: 1px solid #ddd; padding: 10px;'>{i}월</th>"
+                html += "</tr><tr>"
+                for i in range(6):
+                    lab, amt = str(res['labs'][i]).replace('\n', '<br>'), f"{int(res['alloc'][i]):,}원" if res['alloc'][i] > 0 else "0원"
+                    html += f"<td style='border: 1px solid #ddd; padding: 15px;'><span style='font-size:0.85em; color:#888;'>{lab}</span><br><b>{amt}</b></td>"
+                html += "</tr><tr style='background-color: #f8f9fa;'>"
+                for i in range(7, 13): html += f"<th style='border: 1px solid #ddd; padding: 10px;'>{i}월</th>"
+                html += "</tr><tr>"
+                for i in range(6, 12):
+                    lab, amt = str(res['labs'][i]).replace('\n', '<br>'), f"{int(res['alloc'][i]):,}원" if res['alloc'][i] > 0 else "0원"
+                    html += f"<td style='border: 1px solid #ddd; padding: 15px;'><span style='font-size:0.85em; color:#888;'>{lab}</span><br><b>{amt}</b></td>"
+                html += "</tr></table>"; st.markdown(html, unsafe_allow_html=True)
+
+    # 4. 인쇄용 집계표 (Admin 전용)
     elif menu == "🖨️ 인쇄용 집계표":
-        st.subheader("🖨️ 인쇄용 엑셀 다운로드 (자동 가로 4명 출력)")
+        st.subheader("🖨️ 인쇄용 엑셀 다운로드")
         months = sorted(list(set([f"{TARGET_YEAR}{str(m).zfill(2)}" for m in range(1, 13)] + list(df_income[i_y].unique()))), reverse=True)
         target_month = st.selectbox("📌 기준월 선택", months)
-        if st.button("🔄 인쇄 양식 엑셀 파일 만들기", use_container_width=True):
-            with st.spinner("엑셀 2x2 그리드 배열을 그리는 중입니다..."):
+        if st.button("🔄 인쇄용 파일 생성", use_container_width=True):
+            with st.spinner("엑셀 파일을 생성 중입니다..."):
                 donors = set(df_income[df_income[i_y] == target_month][i_n].apply(clean_str).unique())
                 for idx, row in df_target.iterrows():
                     name = clean_str(row.get(t_n))
