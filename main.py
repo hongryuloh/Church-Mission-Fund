@@ -11,32 +11,49 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from datetime import datetime
 
-# --- 1. 앱 기본 설정 및 모바일 최적화 CSS ---
-# initial_sidebar_state="expanded"를 통해 모바일에서도 메뉴가 먼저 보이도록 유도합니다.
+# --- 1. 앱 기본 설정 및 모바일/사파리 최적화 CSS ---
 st.set_page_config(page_title="2026 선교헌금 관리", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
-    /* 1. 상단 여백 제거 및 헤더 숨김 */
-    .block-container { padding-top: 0.5rem !important; padding-bottom: 5rem !important; }
-    header { visibility: hidden; }
-    #MainMenu { visibility: hidden; }
+    /* 1. 상단 여백 제거 및 헤더 숨김 (사파리 대응 최적화) */
+    .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
     
-    /* 2. 모바일 메뉴 버튼(화살표) 강조 스타일 */
-    /* 사이드바가 접혀있을 때 왼쪽 상단에 나타나는 버튼을 강조하여 메뉴 위치를 알립니다. */
+    /* 사파리에서 헤더가 버튼을 가리는 문제 해결 */
+    header[data-testid="stHeader"] {
+        background: transparent !important;
+        height: 0px !important;
+    }
+    header[data-testid="stHeader"] > div {
+        display: none !important;
+    }
+    
+    /* 2. 모바일 메뉴 버튼(화살표) 강제 노출 (iOS 사파리 타겟팅) */
     button[kind="headerNoPadding"] {
+        display: flex !important;
+        position: fixed !important;
+        top: 12px !important;
+        left: 12px !important;
         background-color: #ff4b4b !important;
         color: white !important;
         border-radius: 50% !important;
-        width: 38px !important;
-        height: 38px !important;
-        top: 8px !important;
-        left: 8px !important;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.2) !important;
-        z-index: 999999;
+        width: 44px !important;
+        height: 44px !important;
+        z-index: 9999999 !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3) !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+    
+    /* 버튼 내부 아이콘 색상 강제 (사파리 대비) */
+    button[kind="headerNoPadding"] svg {
+        fill: white !important;
+        stroke: white !important;
+        width: 24px !important;
+        height: 24px !important;
     }
 
-    /* 3. 모바일에서 버튼 4개를 무조건 한 줄로 가로 배치 */
+    /* 3. 모바일 하단 가로 배치 유지 */
     div[data-testid="stHorizontalBlock"] {
         display: flex !important;
         flex-direction: row !important;
@@ -64,14 +81,14 @@ st.markdown("""
         .fixed-footer { background-color: #1e1e1e !important; border-top: 1px solid #333 !important; }
     }
     
-    /* 5. 입력창 및 버튼 높이 최적화 */
+    /* 5. UI 가독성 보정 */
     .stButton button { width: 100% !important; padding: 0px !important; font-size: 13px !important; height: 40px !important; }
     .stNumberInput input { height: 40px !important; }
     
-    /* 6. 사이드바 라디오 버튼 텍스트 크기 조정 (모바일 가독성) */
+    /* 사이드바 텍스트 크기 */
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
-        font-size: 15px !important;
-        padding: 5px 0px !important;
+        font-size: 16px !important;
+        padding: 8px 0px !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -569,7 +586,7 @@ if df_income is not None:
                     if not name or name == 'nan' or name == '합계': continue
                     df_target.at[idx, '인쇄여부'] = 'Y' if name in donors else 'N'
                     user_inc = df_income[df_income[i_n].apply(clean_str) == name]
-                    total_donated = pd.numeric(user_inc[i_a], errors='coerce').sum()
+                    total_donated = pd.to_numeric(user_inc[i_a], errors='coerce').sum()
                     m_amt = pd.to_numeric(row.get(t_a, 0), errors='coerce') or 0
                     df_target.loc[idx, ['년간작정금액', '헌금액', '년간작정 잔여금액']] = [m_amt * 12, total_donated, (m_amt * 12) - total_donated]
                 if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '작정액', df_target)):
