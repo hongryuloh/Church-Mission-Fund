@@ -439,28 +439,26 @@ if df_income is not None:
     elif menu == "📊 결산/주단위집계":
         tab1, tab2 = st.tabs(["📅 월별 결산내역", "📆 주단위 결산내역"])
         
-        # 데이터 전처리 (금액 숫자 변환)
         df_inc_calc = df_income.copy()
         df_exp_calc = df_expense.copy()
         df_inc_calc['amt'] = pd.to_numeric(df_inc_calc[i_a], errors='coerce').fillna(0)
         df_exp_calc['amt'] = pd.to_numeric(df_exp_calc[e_a], errors='coerce').fillna(0)
         
-        # 전년이월 계산 (날짜가 2026-01-01 이전이거나, 이름/내역이 '전년이월'인 경우)
         c_inc = df_inc_calc[(df_inc_calc['날짜'].astype(str) < '2026-01-01') | (df_inc_calc[i_n].astype(str).str.contains('전년이월'))]['amt'].sum()
         c_exp = df_exp_calc[(df_exp_calc[e_d].astype(str) < '2026-01-01') | (df_exp_calc[e_n].astype(str).str.contains('전년이월'))]['amt'].sum()
         carryover_bal = c_inc - c_exp
         
-        # 2026년 실제 데이터 필터링
         df_inc_26 = df_inc_calc[(df_inc_calc['날짜'].astype(str) >= '2026-01-01') & (~df_inc_calc[i_n].astype(str).str.contains('전년이월'))]
         df_exp_26 = df_exp_calc[(df_exp_calc[e_d].astype(str) >= '2026-01-01') & (~df_exp_calc[e_n].astype(str).str.contains('전년이월'))]
         
         with tab1:
             st.subheader("선교헌금 결산내역")
             monthly_data = []
-            monthly_data.append({"월별": "전년이월", "수입": c_inc, "지출": c_exp, "잔액": carryover_bal})
+            monthly_data.append({"월별": "전년이월", "수입": carryover_bal, "지출": 0, "잔액": carryover_bal})
             
             cur_bal = carryover_bal
-            tot_inc, tot_exp = 0, 0
+            tot_inc = carryover_bal
+            tot_exp = 0
             
             for m in range(1, 13):
                 ym = f"2026{m:02d}"
@@ -475,9 +473,8 @@ if df_income is not None:
                     tot_exp += exp
                     monthly_data.append({"월별": ym, "수입": inc, "지출": exp, "잔액": cur_bal})
             
-            monthly_data.append({"월별": "합계", "수입": tot_inc, "지출": tot_exp, "잔액": cur_bal})
+            monthly_data.append({"월별": "합계", "수입": tot_inc, "지출": tot_exp, "잔액": tot_inc - tot_exp})
             
-            # HTML 테이블 렌더링
             h1 = "<table style='width:100%; border-collapse: collapse; text-align: center; border: 2px solid #a4b7c6; font-size: 15px;'>"
             h1 += "<tr style='background-color: #dbe5f1;'><th style='border: 1px solid #a4b7c6; padding: 10px;'>월별</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>수입</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>지출</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>잔액</th></tr>"
             for row in monthly_data:
@@ -494,19 +491,19 @@ if df_income is not None:
         with tab2:
             st.subheader("선교헌금 주단위 결산내역")
             
-            # 수입/지출 발생한 고유 날짜 추출
-            d_inc = df_inc_26[df_inc_26['amt'] > 0]['날짜'].tolist()
-            d_exp = df_exp_26[df_exp_26['amt'] > 0][e_d].tolist()
-            all_dates = sorted(list(set([d for d in d_inc + d_exp if str(d).startswith('2026')])))
+            # [오류 해결] 문자열 포맷으로 변환 후 정렬하여 TypeError 완벽 방어
+            d_inc_list = [format_date_str(d) for d in df_inc_26[df_inc_26['amt'] > 0]['날짜']]
+            d_exp_list = [format_date_str(d) for d in df_exp_26[df_exp_26['amt'] > 0][e_d]]
+            all_dates = sorted(list(set([d for d in d_inc_list + d_exp_list if str(d).startswith('2026')])))
             
             weekly_data = []
-            weekly_data.append({"월별": "전년이월", "수입": c_inc, "지출": c_exp, "잔액": carryover_bal})
+            weekly_data.append({"월별": "전년이월", "수입": carryover_bal, "지출": 0, "잔액": carryover_bal})
             
             cur_bal = carryover_bal
-            tot_inc, tot_exp = 0, 0
+            tot_inc = carryover_bal
+            tot_exp = 0
             
-            for d in all_dates:
-                d_str = format_date_str(d)
+            for d_str in all_dates:
                 inc = df_inc_26[df_inc_26['날짜'].apply(format_date_str) == d_str]['amt'].sum()
                 exp = df_exp_26[df_exp_26[e_d].apply(format_date_str) == d_str]['amt'].sum()
                 
@@ -515,7 +512,7 @@ if df_income is not None:
                 tot_exp += exp
                 weekly_data.append({"월별": d_str, "수입": inc, "지출": exp, "잔액": cur_bal})
                 
-            weekly_data.append({"월별": "합계", "수입": tot_inc, "지출": tot_exp, "잔액": cur_bal})
+            weekly_data.append({"월별": "합계", "수입": tot_inc, "지출": tot_exp, "잔액": tot_inc - tot_exp})
 
             h2 = "<table style='width:100%; border-collapse: collapse; text-align: center; border: 2px solid #a4b7c6; font-size: 15px;'>"
             h2 += "<tr style='background-color: #dbe5f1;'><th style='border: 1px solid #a4b7c6; padding: 10px;'>월별</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>수입</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>지출</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>잔액</th></tr>"
