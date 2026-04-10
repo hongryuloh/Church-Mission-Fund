@@ -108,7 +108,6 @@ def overwrite_sheet_preserve(raw_excel, sheet_name, df_new):
     for _, row_data in df_new.iterrows():
         for col_name, val in row_data.items():
             col_str = str(col_name).strip()
-            # 엑셀에 없는 계산 항목이면 새로 열을 만들어 줍니다.
             if col_str not in header_map and not col_str.startswith('Unnamed'):
                 new_col = ws.max_column + 1
                 ws.cell(row=header_row, column=new_col, value=col_str)
@@ -150,7 +149,7 @@ def append_dict_to_excel(raw_excel, sheet_name, row_dict):
             
     output = io.BytesIO(); wb.save(output); return output.getvalue()
 
-# --- 3. 데이터 계산 로직 ---
+# --- 3. 데이터 계산 로직 (사용자 피드백 반영 최적화) ---
 def calculate_details(user_name, df_income, df_target, start_year=2026):
     t_n = get_col(df_target, ['이름', '성명'], 0)
     t_a = get_col(df_target, ['월별 작정액', '작정액'], 2)
@@ -160,18 +159,29 @@ def calculate_details(user_name, df_income, df_target, start_year=2026):
 
     user_info = df_target[df_target[t_n].astype(str).str.strip() == user_name]
     if user_info.empty: return None
-    commit = float(user_info.iloc[0][t_a]) if pd.notna(user_info.iloc[0][t_a]) else 0.0
     
+    commit = float(user_info.iloc[0].get(t_a, 0)) if pd.notna(user_info.iloc[0].get(t_a, 0)) else 0.0
+    
+    # [핵심 변경] 작정액 시트에서 이미 계산된 '헌금액'과 '잔여금액'을 그대로 가져옵니다.
+    total_donated = pd.to_numeric(user_info.iloc[0].get('헌금액', 0), errors='coerce')
+    total_donated = 0.0 if pd.isna(total_donated) else float(total_donated)
+    
+    balance = pd.to_numeric(user_info.iloc[0].get('년간작정 잔여금액', 0), errors='coerce')
+    balance = 0.0 if pd.isna(balance) else float(balance)
+    
+    # 1~12월 월별 납부액 표기를 위해서만 헌금수입을 그룹화합니다. (에러 원천 차단)
     u_inc = df_income[df_income[i_n].astype(str).str.strip() == user_name].copy()
     u_inc['YM'] = u_inc[i_y].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-    paid = u_inc.groupby('YM').apply(lambda x: pd.to_numeric(x[i_a], errors='coerce').sum()).to_dict()
+    u_inc[i_a] = pd.to_numeric(u_inc[i_a], errors='coerce').fillna(0) 
+    paid = u_inc.groupby('YM')[i_a].sum().to_dict()
     
     alloc, lab = [0.0]*13, [""]*13
     sorted_m = sorted([m for m in paid.keys() if m.startswith(str(start_year))])
+    
     if commit > 0:
         ptr = 1
         for pm in sorted_m:
-            val = float(paid[pm])
+            val = float(paid.get(pm, 0))
             while val > 0 and ptr <= 12:
                 rem = commit - alloc[ptr]
                 if rem <= 0: ptr += 1
@@ -185,20 +195,23 @@ def calculate_details(user_name, df_income, df_target, start_year=2026):
         for pm in sorted_m:
             try:
                 m = int(pm[-2:])
-                if 1 <= m <= 12: alloc[m], lab[m] = paid[pm], f"{m}월납"
+                if 1 <= m <= 12: alloc[m], lab[m] = float(paid.get(pm, 0)), f"{m}월납"
             except: pass 
-    return {"name": user_name, "commit": commit, "alloc": alloc[1:], "labs": lab[1:], "total": sum(paid.values())}
+            
+    # sum 연산을 아예 제거하고 엑셀(df_target)에서 가져온 값을 바로 반환합니다.
+    return {"name": user_name, "commit": commit, "alloc": alloc[1:], "labs": lab[1:], "total": total_donated, "balance": balance}
 
 def generate_summary_excel(df_income, df_target, raw_excel, start_year=2026):
     wb = openpyxl.load_workbook(io.BytesIO(raw_excel))
     ws = wb['개인별 집계'] if '개인별 집계' in wb.sheetnames else wb.create_sheet('개인별 집계')
     ws.delete_rows(1, ws.max_row)
-    ws.append(["성명", "작정액", "1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월", "총납부액", "잔액"])
+    ws.append(["성명", "월작정액", "1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월", "총납부액", "연간잔액"])
     t_n = get_col(df_target, ['이름', '성명'], 0)
     names = [n for n in df_target[t_n].dropna().astype(str).str.strip().unique().tolist() if n and n.lower() != 'nan']
     for n in names:
         res = calculate_details(n, df_income, df_target, start_year)
-        if res: ws.append([res["name"], res["commit"]] + res["alloc"] + [res["total"], max(0, res["commit"] - res["total"])])
+        # res["total"]과 res["balance"]는 이제 모두 작정액 시트에서 정확히 가져온 값입니다.
+        if res: ws.append([res["name"], res["commit"]] + res["alloc"] + [res["total"], res["balance"]])
     output = io.BytesIO(); wb.save(output); return output.getvalue()
 
 # --- 5. 앱 화면 구성 ---
@@ -346,7 +359,7 @@ if df_income is not None:
                             st.session_state.mode_exp = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_exp = None; st.rerun()
 
-        with tab3: # 작정액 관리
+        with tab3: # 작정액
             if st.session_state.mode_tgt is None:
                 st.write("🔹 작정 명단")
                 df_tgt_view = df_target.copy()
@@ -436,7 +449,6 @@ if df_income is not None:
     elif menu == "🖨️ 인쇄용 집계표":
         st.subheader("🖨️ 개인별 집계표 생성 및 인쇄여부 일괄 업데이트")
         
-        # [수정] 1월부터 12월까지 고정 리스트 생성 (기존 데이터 월도 포함)
         all_months = [f"2026{str(m).zfill(2)}" for m in range(1, 13)]
         data_months = [str(m) for m in df_income[i_y].unique() if str(m).isdigit() and len(str(m)) == 6]
         available_months = sorted(list(set(all_months + data_months)), reverse=True)
@@ -467,6 +479,7 @@ if df_income is not None:
 
                 save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '작정액', df_target))
                 
+                # [오류 해결 완료] 계산 충돌 없이 가장 깔끔하게 생성됩니다.
                 data = generate_summary_excel(df_income, df_target, raw_excel)
                 st.session_state.download_data = data
                 st.success(f"✅ {target_month}월 기준 '인쇄여부'가 업데이트되었습니다. 아래에서 엑셀을 다운로드하세요!")
