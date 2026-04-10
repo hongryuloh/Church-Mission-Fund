@@ -43,15 +43,15 @@ if not st.session_state["authenticated"]:
 # 로그인을 통과한 사람만 아래 본문 코드가 실행됩니다.
 # =====================================================================
 
-# 우측 상단에 현재 접속자 표시 및 로그아웃 버튼
-c1, c2 = st.columns([8, 1])
-with c1: st.title("⛪ 2026 선교헌금 관리 시스템")
-with c2: 
-    st.write(f"👤 **{st.session_state['current_user']}**님")
-    if st.button("로그아웃"):
+# [모바일 최적화] 제목과 로그아웃 버튼을 사이드바 상단으로 이동
+with st.sidebar:
+    st.title("⛪ 2026 선교헌금")
+    st.write(f"👤 **{st.session_state['current_user']}**님 접속 중")
+    if st.button("로그아웃", use_container_width=True):
         st.session_state["authenticated"] = False
         st.session_state["current_user"] = ""
         st.rerun()
+    st.markdown("---") # 구분선
 
 # --- 2. 보안 설정 및 헬퍼 함수 ---
 FILE_ID = st.secrets["google"]["file_id"]
@@ -179,9 +179,7 @@ def append_dict_to_excel(raw_excel, sheet_name, row_dict):
 def calculate_details(user_name, df_income, df_target, start_year=2026):
     t_n = get_col(df_target, ['이름', '성명'], 0)
     t_a = get_col(df_target, ['월별 작정액', '작정액'], 2)
-    i_n = get_col(df_income, ['이름', '성명'], 2)
-    i_y = get_col(df_income, ['년월'], 1)
-    i_a = get_col(df_income, ['금액'], 3)
+    i_n, i_y, i_a = get_col(df_income, ['이름', '성명'], 2), get_col(df_income, ['년월'], 1), get_col(df_income, ['금액'], 3)
 
     user_info = df_target[df_target[t_n].astype(str).str.strip() == user_name.strip()]
     if user_info.empty: return None
@@ -330,6 +328,7 @@ if df_income is not None:
                 pos = clean_str(user_info.iloc[0].get(t_p, "")) if not user_info.empty else ""
                 st.subheader(f"📄 {res['name']} ({pos})")
                 st.write(f"기준일({datetime.now().strftime('%Y.%m.%d')}) 현재 / 월 작정액: {int(res['commit']):,}원 / 총 헌금액: {int(res['total']):,}원")
+                
                 # 아이폰 가독성 개선: background-color: #ffffff 및 color: #333333 추가
                 html = "<table style='width:100%; border-collapse: collapse; text-align: center; margin-top: 15px; background-color: #ffffff; color: #333333;'>"
                 html += "<tr style='background-color: #f8f9fa;'>"
@@ -433,7 +432,7 @@ if df_income is not None:
                 st.dataframe(df_view[disp], use_container_width=True)
                 c1, c2, c3, c4 = st.columns([2,1,1,1])
                 if c1.button("➕ 신규 성도", key="tgt_a"): st.session_state.mode_tgt = 'add'; st.rerun()
-                idx = c2.number_input("행 번호", min_value=0, max_value=max(0, len(df_target)-1), key="tgt_i")
+                idx = c2.number_input("행 번호", min_value=0, max_value=max(0, len(df_income)-1), key="tgt_i")
                 if c3.button("📝 수정", key="tgt_e"): st.session_state.edit_idx_tgt, st.session_state.mode_tgt = idx, 'edit'; st.rerun()
                 if c4.button("🗑️ 삭제", key="tgt_d"): st.session_state.edit_idx_tgt, st.session_state.mode_tgt = idx, 'delete_check'; st.rerun()
             elif st.session_state.mode_tgt == 'add':
@@ -473,6 +472,7 @@ if df_income is not None:
                 if inc == 0 and exp == 0 and m > datetime.now().month: monthly_data.append({"월별": ym, "수입": 0, "지출": 0, "잔액": 0})
                 else: cur_bal += (inc - exp); tot_inc += inc; tot_exp += exp; monthly_data.append({"월별": ym, "수입": inc, "지출": exp, "잔액": cur_bal})
             monthly_data.append({"월별": "합계", "수입": tot_inc, "지출": tot_exp, "잔액": tot_inc - tot_exp})
+            
             # 아이폰 가독성 개선: background-color: #ffffff 및 color: #333333 추가
             h1 = "<table style='width:100%; border-collapse: collapse; text-align: center; border: 2px solid #a4b7c6; font-size: 15px; background-color: #ffffff; color: #333333;'>"
             h1 += "<tr style='background-color: #dbe5f1;'><th style='border: 1px solid #a4b7c6; padding: 10px;'>월별</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>수입</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>지출</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>잔액</th></tr>"
@@ -491,6 +491,7 @@ if df_income is not None:
                 inc, exp = df_inc_26[df_inc_26['날짜'].apply(format_date_str) == d_str]['amt'].sum(), df_exp_26[df_exp_26[e_d].apply(format_date_str) == d_str]['amt'].sum()
                 cur_bal += (inc - exp); tot_inc += inc; tot_exp += exp; weekly_temp.append({"월별": d_str, "수입": inc, "지출": exp, "잔액": cur_bal})
             weekly_display = [{"월별": "합계", "수입": tot_inc, "지출": tot_exp, "잔액": tot_inc - tot_exp}] + weekly_temp[::-1] + [{"월별": "전년이월", "수입": carryover_bal, "지출": 0, "잔액": carryover_bal}]
+            
             # 아이폰 가독성 개선: background-color: #ffffff 및 color: #333333 추가
             h2 = "<table style='width:100%; border-collapse: collapse; text-align: center; border: 2px solid #a4b7c6; font-size: 15px; background-color: #ffffff; color: #333333;'>"
             h2 += "<tr style='background-color: #dbe5f1;'><th style='border: 1px solid #a4b7c6; padding: 10px;'>월별</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>수입</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>지출</th><th style='border: 1px solid #a4b7c6; padding: 10px;'>잔액</th></tr>"
