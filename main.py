@@ -418,7 +418,6 @@ if df_income is not None:
                     if st.form_submit_button("취소"): st.session_state.mode_inc = None; st.rerun()
                     
             elif st.session_state.mode_inc == 'edit':
-                # 수정 화면도 순서를 맞춤
                 curr = df_income.iloc[st.session_state.edit_idx_inc]
                 with st.form("inc_edit"):
                     new_d = st.date_input("날짜", value=pd.to_datetime(curr.get('날짜', datetime.now())) if pd.notna(curr.get('날짜')) else datetime.now())
@@ -476,7 +475,6 @@ if df_income is not None:
                     note = st.text_input("비고")
                     
                     if st.form_submit_button("저장"):
-                        # '직접 입력'을 골랐다면 텍스트 박스의 값을, 아니면 선택한 값을 사용
                         final_item = custom_item.strip() if sel_item.startswith("➕") else sel_item
                         if not final_item:
                             st.error("지출항목을 기재해 주세요.")
@@ -490,7 +488,6 @@ if df_income is not None:
                 with st.form("exp_edit"):
                     new_d = st.date_input("날짜", value=pd.to_datetime(curr.get('날짜', datetime.now())) if pd.notna(curr.get('날짜')) else datetime.now())
                     
-                    # 수정 시에도 기존 항목 리스트 활용
                     curr_item = str(curr.get('내역', '')).strip()
                     existing_items = sorted(list(set([str(x).strip() for x in df_expense.get('내역', []) if pd.notna(x) and str(x).strip()])))
                     exp_opts = existing_items + ["➕ 직접 입력 (아래 빈칸에 작성)"]
@@ -527,9 +524,13 @@ if df_income is not None:
                     total_donated = pd.to_numeric(user_inc[i_a], errors='coerce').sum()
                     m_amt = pd.to_numeric(row.get(t_a, 0), errors='coerce') or 0
                     df_view.loc[idx, ['년간작정금액', '헌금액', '년간작정 잔여금액']] = [m_amt * 12, total_donated, (m_amt * 12) - total_donated]
-                for c in [t_a, '년간작정금액', '헌금액', '년간작정 잔여금액']: df_view[c] = pd.to_numeric(df_view[c], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
-                disp = [c for c in df_view.columns if not str(c).startswith('Unnamed')]
-                st.dataframe(df_view[disp], use_container_width=True, height=330)
+                for c in [t_a, '년간작정금액', '헌금액', '년간작정 잔여금액']: 
+                    if c in df_view.columns:
+                        df_view[c] = pd.to_numeric(df_view[c], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
+                
+                # --- 작정액 관리 화면: 이름, 직분, 작정액만 노출 ---
+                disp = [c for c in [t_n, t_p, t_a] if c is not None and c in df_view.columns]
+                st.dataframe(df_view[disp].dropna(subset=[t_n]), use_container_width=True, height=330)
                 
                 with st.container():
                     st.markdown('<div class="fixed-footer">', unsafe_allow_html=True)
