@@ -101,7 +101,7 @@ if not st.session_state["authenticated"]:
                     st.error("❌ 아이디 또는 비밀번호가 틀렸습니다.")
     st.stop() 
 
-# [모바일 최적화] 제목과 로그아웃 버튼을 사이드바 상단으로 이동
+# [모바일 최적화] 사이드바 구성
 with st.sidebar:
     st.title("⛪ 2026 선교헌금")
     st.write(f"👤 **{st.session_state['current_user']}**님 접속 중")
@@ -374,17 +374,14 @@ if df_income is not None:
         tab1, tab2, tab3 = st.tabs(["💰 헌금 수입", "📉 지출 내역", "👤 작정액 관리"])
         with tab1: 
             if st.session_state.mode_inc is None:
-                # [최신순 정렬]
                 df_view = df_income.copy()
                 df_view['dt_sort'] = pd.to_datetime(df_view['날짜'], errors='coerce')
                 df_view = df_view.sort_values(by='dt_sort', ascending=False).drop(columns=['dt_sort'])
                 if '날짜' in df_view.columns: df_view['날짜'] = df_view['날짜'].apply(format_date_str)
                 if i_a in df_view.columns: df_view[i_a] = pd.to_numeric(df_view[i_a], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
                 disp = [c for c in df_view.columns if not str(c).startswith('Unnamed') and str(c) != i_y]
-                # 표 높이 조절 (모바일 한 화면 가독성)
                 st.dataframe(df_view[disp].dropna(subset=[i_n]), use_container_width=True, height=330)
                 
-                # [하단 고정 바 - 버튼 가로 한 줄 배치]
                 with st.container():
                     st.markdown('<div class="fixed-footer">', unsafe_allow_html=True)
                     bc1, bc2, bc3, bc4 = st.columns([1.2, 1, 1, 1])
@@ -428,7 +425,6 @@ if df_income is not None:
 
         with tab2:
             if st.session_state.mode_exp is None:
-                # [최신순 정렬]
                 df_exp_v = df_expense.copy()
                 df_exp_v['dt_sort'] = pd.to_datetime(df_exp_v['날짜'], errors='coerce')
                 df_exp_v = df_exp_v.sort_values(by='dt_sort', ascending=False).drop(columns=['dt_sort'])
@@ -573,7 +569,7 @@ if df_income is not None:
                     if not name or name == 'nan' or name == '합계': continue
                     df_target.at[idx, '인쇄여부'] = 'Y' if name in donors else 'N'
                     user_inc = df_income[df_income[i_n].apply(clean_str) == name]
-                    total_donated = pd.to_numeric(user_inc[i_a], errors='coerce').sum()
+                    total_donated = pd.numeric(user_inc[i_a], errors='coerce').sum()
                     m_amt = pd.to_numeric(row.get(t_a, 0), errors='coerce') or 0
                     df_target.loc[idx, ['년간작정금액', '헌금액', '년간작정 잔여금액']] = [m_amt * 12, total_donated, (m_amt * 12) - total_donated]
                 if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '작정액', df_target)):
