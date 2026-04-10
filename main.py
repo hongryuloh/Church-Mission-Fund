@@ -11,7 +11,56 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from datetime import datetime
 
-# --- 1. 보안 설정 ---
+# --- 1. 앱 기본 설정 및 다중 계정 로그인 검문소 ---
+st.set_page_config(page_title="2026 선교헌금 관리", layout="wide")
+
+# (1) 세션에 로그인 상태 저장
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+if "current_user" not in st.session_state:
+    st.session_state["current_user"] = ""
+
+# (2) 로그인 화면 구성
+if not st.session_state["authenticated"]:
+    # 화면 중앙 정렬을 위해 여백(columns) 활용
+    col1, col2, col3 = st.columns([1, 2, 1]) 
+    
+    with col2:
+        st.title("⛪ 선교헌금 관리 시스템")
+        st.info("🔒 접근 권한이 필요합니다. ID와 비밀번호를 입력해 주세요.")
+        
+        with st.form("login_form"):
+            input_id = st.text_input("아이디 (ID)")
+            input_pwd = st.text_input("비밀번호 (Password)", type="password")
+            
+            if st.form_submit_button("로그인", use_container_width=True):
+                # 입력한 ID가 secrets 목록에 있고, 비밀번호도 일치하는지 확인
+                credentials = st.secrets.get("credentials", {})
+                
+                if input_id in credentials and credentials[input_id] == input_pwd:
+                    st.session_state["authenticated"] = True
+                    st.session_state["current_user"] = input_id # 접속자 기록
+                    st.rerun() # 로그인 성공 시 화면 새로고침하여 본문 진입
+                else:
+                    st.error("❌ 아이디 또는 비밀번호가 틀렸습니다.")
+                    
+    st.stop() # 로그인을 통과하지 못하면 여기서 프로그램 강제 정지
+
+# =====================================================================
+# 로그인을 통과한 사람만 아래 본문 코드가 실행됩니다.
+# =====================================================================
+
+# 우측 상단에 현재 접속자 표시 및 로그아웃 버튼 (선택 사항)
+c1, c2 = st.columns([8, 1])
+with c1: st.title("⛪ 2026 선교헌금 관리 시스템")
+with c2: 
+    st.write(f"👤 **{st.session_state['current_user']}**님")
+    if st.button("로그아웃"):
+        st.session_state["authenticated"] = False
+        st.session_state["current_user"] = ""
+        st.rerun()
+
+# --- 기존 1. 보안 설정 ---
 FILE_ID = st.secrets["google"]["file_id"]
 
 def get_gdrive_service():
