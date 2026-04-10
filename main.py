@@ -19,7 +19,13 @@ def get_gdrive_service():
     )
     return build('drive', 'v3', credentials=credentials)
 
-# --- 날짜 포맷 함수 ---
+# --- 헬퍼 함수 ---
+def get_col(df, possible_names, default_idx):
+    for name in possible_names:
+        if name in df.columns: return name
+    if len(df.columns) > default_idx: return df.columns[default_idx]
+    return None
+
 def format_date_str(x):
     if pd.isna(x): return ""
     if isinstance(x, pd.Timestamp) or hasattr(x, 'strftime'): return x.strftime('%Y-%m-%d')
@@ -47,7 +53,7 @@ def load_data(file_id):
                 header_idx = 0
                 for i in range(min(10, len(df_raw))):
                     vals = [str(x).strip() for x in df_raw.iloc[i].values if pd.notna(x)]
-                    if any(k in vals for k in ['날짜', '성명', '내역', '작정액']):
+                    if any(k in vals for k in ['날짜', '이름', '성명', '내역', '작정액', '월별 작정액']):
                         header_idx = i; break
                 df = pd.read_excel(io.BytesIO(raw_excel), sheet_name=sheet_name, header=header_idx).astype(object)
                 return df.dropna(how='all').reset_index(drop=True)
@@ -60,12 +66,11 @@ def load_data(file_id):
                     val = str(row['년월']).strip()
                     if val in ['None', 'nan', '<NA>', 'NaT', '']:
                         d_val = format_date_str(row['날짜']).replace('-', '')
-                        if len(d_val) >= 6:
-                            df.at[idx, '년월'] = d_val[:6]
+                        if len(d_val) >= 6: df.at[idx, '년월'] = d_val[:6]
             return df
 
         df_income = auto_fill_ym(robust_load('헌금수입', ['날짜', '년월', '성명', '금액', '비고']))
-        df_target = robust_load('작정액', ['성명', '직분', '작정액'])
+        df_target = robust_load('작정액', ['이름', '직분', '월별 작정액', '년간작정금액', '헌금액', '년간작정 잔여금액', '인쇄여부'])
         df_expense = auto_fill_ym(robust_load('지출', ['날짜', '년월', '내역', '금액', '비고']))
             
         return df_income, df_target, df_expense, raw_excel
@@ -89,11 +94,10 @@ def overwrite_sheet_preserve(raw_excel, sheet_name, df_new):
     header_row = 1
     for r in range(1, 11):
         vals = [str(ws.cell(row=r, column=c).value).strip() for c in range(1, ws.max_column + 1) if ws.cell(row=r, column=c).value is not None]
-        if any(v in ['날짜', '성명', '내역', '작정액'] for v in vals):
+        if any(v in ['날짜', '이름', '성명', '내역', '작정액', '월별 작정액'] for v in vals):
             header_row = r; break
             
-    if ws.max_row > header_row: 
-        ws.delete_rows(header_row + 1, ws.max_row - header_row)
+    if ws.max_row > header_row: ws.delete_rows(header_row + 1, ws.max_row - header_row)
         
     header_map = {}
     for col_idx in range(1, ws.max_column + 1):
@@ -104,6 +108,12 @@ def overwrite_sheet_preserve(raw_excel, sheet_name, df_new):
     for _, row_data in df_new.iterrows():
         for col_name, val in row_data.items():
             col_str = str(col_name).strip()
+            # 엑셀에 없는 계산 항목이면 새로 열을 만들어 줍니다.
+            if col_str not in header_map and not col_str.startswith('Unnamed'):
+                new_col = ws.max_column + 1
+                ws.cell(row=header_row, column=new_col, value=col_str)
+                header_map[col_str] = new_col
+                
             if col_str in header_map:
                 ws.cell(row=target_row, column=header_map[col_str], value=None if pd.isna(val) else val)
         target_row += 1
@@ -117,7 +127,7 @@ def append_dict_to_excel(raw_excel, sheet_name, row_dict):
     header_row = 1
     for r in range(1, 11):
         vals = [str(ws.cell(row=r, column=c).value).strip() for c in range(1, ws.max_column + 1) if ws.cell(row=r, column=c).value is not None]
-        if any(v in ['날짜', '성명', '내역', '작정액'] for v in vals):
+        if any(v in ['날짜', '이름', '성명', '내역', '작정액', '월별 작정액'] for v in vals):
             header_row = r; break
             
     header_map = {}
@@ -132,22 +142,21 @@ def append_dict_to_excel(raw_excel, sheet_name, row_dict):
     target_row = last_row + 1
     
     for key, val in row_dict.items():
-        if key in header_map: ws.cell(row=target_row, column=header_map[key], value=val)
-        else:
+        if key not in header_map:
             new_col = ws.max_column + 1
             ws.cell(row=header_row, column=new_col, value=key)
-            ws.cell(row=target_row, column=new_col, value=val)
             header_map[key] = new_col
+        ws.cell(row=target_row, column=header_map[key], value=val)
             
     output = io.BytesIO(); wb.save(output); return output.getvalue()
 
 # --- 3. 데이터 계산 로직 ---
 def calculate_details(user_name, df_income, df_target, start_year=2026):
-    t_n = '성명' if '성명' in df_target.columns else df_target.columns[0]
-    t_a = '작정액' if '작정액' in df_target.columns else df_target.columns[2]
-    i_n = '성명' if '성명' in df_income.columns else df_income.columns[2]
-    i_y = '년월' if '년월' in df_income.columns else df_income.columns[1]
-    i_a = '금액' if '금액' in df_income.columns else df_income.columns[3]
+    t_n = get_col(df_target, ['이름', '성명'], 0)
+    t_a = get_col(df_target, ['월별 작정액', '작정액'], 2)
+    i_n = get_col(df_income, ['이름', '성명'], 2)
+    i_y = get_col(df_income, ['년월'], 1)
+    i_a = get_col(df_income, ['금액'], 3)
 
     user_info = df_target[df_target[t_n].astype(str).str.strip() == user_name]
     if user_info.empty: return None
@@ -185,7 +194,7 @@ def generate_summary_excel(df_income, df_target, raw_excel, start_year=2026):
     ws = wb['개인별 집계'] if '개인별 집계' in wb.sheetnames else wb.create_sheet('개인별 집계')
     ws.delete_rows(1, ws.max_row)
     ws.append(["성명", "작정액", "1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월", "총납부액", "잔액"])
-    t_n = '성명' if '성명' in df_target.columns else df_target.columns[0]
+    t_n = get_col(df_target, ['이름', '성명'], 0)
     names = [n for n in df_target[t_n].dropna().astype(str).str.strip().unique().tolist() if n and n.lower() != 'nan']
     for n in names:
         res = calculate_details(n, df_income, df_target, start_year)
@@ -205,8 +214,15 @@ with st.spinner('데이터 동기화 중...'):
 if df_income is not None:
     menu = st.sidebar.radio("메뉴", ["🔍 개인별 조회", "✍️ 데이터 관리", "📊 결산 및 통계", "🖨️ 인쇄용 집계표"])
 
+    # --- 공통 컬럼 별칭 ---
+    t_n = get_col(df_target, ['이름', '성명'], 0)
+    t_p = get_col(df_target, ['직분'], 1)
+    t_a = get_col(df_target, ['월별 작정액', '작정액'], 2)
+    i_n = get_col(df_income, ['이름', '성명'], 2)
+    i_y = get_col(df_income, ['년월'], 1)
+    i_a = get_col(df_income, ['금액'], 3)
+
     if menu == "🔍 개인별 조회":
-        t_n = '성명' if '성명' in df_target.columns else df_target.columns[0]
         names = [n for n in df_target[t_n].dropna().astype(str).str.strip().unique().tolist() if n and n.lower() != 'nan']
         selected = st.selectbox("성명을 선택하세요", names)
         if selected:
@@ -229,11 +245,9 @@ if df_income is not None:
                 st.write("🔹 최근 헌금 수입")
                 df_view = df_income.copy()
                 if '날짜' in df_view.columns: df_view['날짜'] = df_view['날짜'].apply(format_date_str)
-                if '금액' in df_view.columns: df_view['금액'] = pd.to_numeric(df_view['금액'], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
-                if '성명' in df_view.columns: df_view = df_view.dropna(subset=['성명'])
-                
-                # [핵심] 화면에 보여줄 때 '년월'과 'Unnamed' 열을 제외합니다.
-                disp_cols = [c for c in df_view.columns if not str(c).startswith('Unnamed') and str(c) != '년월']
+                if i_a in df_view.columns: df_view[i_a] = pd.to_numeric(df_view[i_a], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
+                if i_n in df_view.columns: df_view = df_view.dropna(subset=[i_n])
+                disp_cols = [c for c in df_view.columns if not str(c).startswith('Unnamed') and str(c) != i_y]
                 st.dataframe(df_view[disp_cols], use_container_width=True)
                 
                 c1, c2, c3, c4 = st.columns([2,1,1,1])
@@ -246,12 +260,10 @@ if df_income is not None:
                 with st.form("inc_add"):
                     d = st.date_input("입금일자")
                     amt = st.number_input("금액", min_value=0, step=1000) 
-                    t_n = '성명' if '성명' in df_target.columns else df_target.columns[0]
-                    t_p = '직분' if '직분' in df_target.columns else df_target.columns[1]
                     options = [f"{r[t_n]} ({r[t_p]})" if pd.notna(r.get(t_p)) else str(r.get(t_n)) for _, r in df_target.iterrows() if pd.notna(r.get(t_n))]
                     sel, note = st.selectbox("성명 선택", options), st.text_input("비고")
                     if st.form_submit_button("저장"):
-                        row_dict = {'날짜': d.strftime("%Y-%m-%d"), '년월': d.strftime("%Y%m"), '성명': sel.split(" (")[0], '금액': amt, '비고': note}
+                        row_dict = {'날짜': d.strftime("%Y-%m-%d"), i_y: d.strftime("%Y%m"), i_n: sel.split(" (")[0], i_a: amt, '비고': note}
                         if save_to_drive(FILE_ID, append_dict_to_excel(raw_excel, '헌금수입', row_dict)):
                             st.session_state.mode_inc = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_inc = None; st.rerun()
@@ -267,16 +279,16 @@ if df_income is not None:
                 curr = df_income.iloc[st.session_state.edit_idx_inc]
                 with st.form("inc_edit"):
                     new_d = st.date_input("날짜", value=pd.to_datetime(curr.get('날짜', datetime.now())) if pd.notna(curr.get('날짜')) else datetime.now())
-                    new_n = st.text_input("성명", value=str(curr.get('성명', '')))
-                    new_a = st.number_input("금액", value=int(pd.to_numeric(curr.get('금액', 0), errors='coerce') or 0), step=1000)
+                    new_n = st.text_input("성명", value=str(curr.get(i_n, '')))
+                    new_a = st.number_input("금액", value=int(pd.to_numeric(curr.get(i_a, 0), errors='coerce') or 0), step=1000)
                     new_b = st.text_input("비고", value=str(curr.get('비고', '')) if pd.notna(curr.get('비고')) else "")
                     
                     if st.form_submit_button("✅ 수정 완료"):
                         idx = df_income.index[st.session_state.edit_idx_inc]
                         df_income.loc[idx, '날짜'] = new_d.strftime("%Y-%m-%d")
-                        df_income.loc[idx, '년월'] = new_d.strftime("%Y%m")
-                        df_income.loc[idx, '성명'] = new_n
-                        df_income.loc[idx, '금액'] = new_a
+                        df_income.loc[idx, i_y] = new_d.strftime("%Y%m")
+                        df_income.loc[idx, i_n] = new_n
+                        df_income.loc[idx, i_a] = new_a
                         df_income.loc[idx, '비고'] = new_b
                         if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '헌금수입', df_income)):
                             st.session_state.mode_inc = None; st.rerun()
@@ -288,8 +300,6 @@ if df_income is not None:
                 df_exp_view = df_expense.copy()
                 if '날짜' in df_exp_view.columns: df_exp_view['날짜'] = df_exp_view['날짜'].apply(format_date_str)
                 if '금액' in df_exp_view.columns: df_exp_view['금액'] = pd.to_numeric(df_exp_view['금액'], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
-                
-                # [핵심] 화면에 보여줄 때 '년월'과 'Unnamed' 열을 제외합니다.
                 disp_cols = [c for c in df_exp_view.columns if not str(c).startswith('Unnamed') and str(c) != '년월']
                 st.dataframe(df_exp_view[disp_cols], use_container_width=True)
                 
@@ -336,11 +346,32 @@ if df_income is not None:
                             st.session_state.mode_exp = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_exp = None; st.rerun()
 
-        with tab3: # 작정액
+        with tab3: # 작정액 관리 (자동 계산 반영)
             if st.session_state.mode_tgt is None:
                 st.write("🔹 작정 명단")
                 df_tgt_view = df_target.copy()
-                if '작정액' in df_tgt_view.columns: df_tgt_view['작정액'] = pd.to_numeric(df_tgt_view['작정액'], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
+                
+                # [핵심 로직] 화면에 보여주기 위해 None인 값을 실시간으로 계산해서 채워줍니다.
+                for idx, row in df_tgt_view.iterrows():
+                    name = str(row.get(t_n, '')).strip()
+                    if not name or name == 'nan': continue
+                    m_amt = pd.to_numeric(row.get(t_a, 0), errors='coerce')
+                    m_amt = 0 if pd.isna(m_amt) else m_amt
+                    y_amt = m_amt * 12
+                    
+                    # 헌금액 합계 계산
+                    user_donations = df_income[df_income[i_n].astype(str).str.strip() == name]
+                    total_donated = pd.to_numeric(user_donations[i_a], errors='coerce').sum()
+                    
+                    df_tgt_view.loc[idx, '년간작정금액'] = y_amt
+                    df_tgt_view.loc[idx, '헌금액'] = total_donated
+                    df_tgt_view.loc[idx, '년간작정 잔여금액'] = y_amt - total_donated
+                
+                # 금액 예쁘게 원 단위 포맷팅
+                for col in [t_a, '년간작정금액', '헌금액', '년간작정 잔여금액']:
+                    if col in df_tgt_view.columns:
+                        df_tgt_view[col] = pd.to_numeric(df_tgt_view[col], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
+                
                 disp_cols = [c for c in df_tgt_view.columns if not str(c).startswith('Unnamed')]
                 st.dataframe(df_tgt_view[disp_cols], use_container_width=True)
                 
@@ -353,9 +384,18 @@ if df_income is not None:
             elif st.session_state.mode_tgt == 'add':
                 with st.form("tgt_add"):
                     n, p = st.text_input("성명"), st.text_input("직분")
-                    amt = st.number_input("월 작정액", min_value=0, step=1000)
+                    amt = st.number_input("월별 작정액", min_value=0, step=1000)
                     if st.form_submit_button("저장"):
-                        row_dict = {'성명': n, '직분': p, '작정액': amt}
+                        # 저장할 때 수식도 같이 계산해서 엑셀에 적어줍니다.
+                        user_donations = df_income[df_income[i_n].astype(str).str.strip() == n.strip()]
+                        total_donated = pd.to_numeric(user_donations[i_a], errors='coerce').sum()
+                        row_dict = {
+                            t_n: n, t_p: p, t_a: amt, 
+                            '년간작정금액': amt * 12, 
+                            '헌금액': total_donated, 
+                            '년간작정 잔여금액': (amt * 12) - total_donated,
+                            '인쇄여부': 'N'
+                        }
                         if save_to_drive(FILE_ID, append_dict_to_excel(raw_excel, '작정액', row_dict)):
                             st.session_state.mode_tgt = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_tgt = None; st.rerun()
@@ -370,26 +410,75 @@ if df_income is not None:
             elif st.session_state.mode_tgt == 'edit':
                 curr = df_target.iloc[st.session_state.edit_idx_tgt]
                 with st.form("tgt_edit"):
-                    n = st.text_input("성명", value=str(curr.get('성명', '')))
-                    p = st.text_input("직분", value=str(curr.get('직분', '')))
-                    a = st.number_input("작정액", value=int(pd.to_numeric(curr.get('작정액', 0), errors='coerce') or 0), step=1000)
+                    n = st.text_input("성명", value=str(curr.get(t_n, '')))
+                    p = st.text_input("직분", value=str(curr.get(t_p, '')))
+                    a = st.number_input("월별 작정액", value=int(pd.to_numeric(curr.get(t_a, 0), errors='coerce') or 0), step=1000)
                     
                     if st.form_submit_button("✅ 수정 완료"):
                         idx = df_target.index[st.session_state.edit_idx_tgt]
-                        df_target.loc[idx, '성명'] = n
-                        df_target.loc[idx, '직분'] = p
-                        df_target.loc[idx, '작정액'] = a
+                        user_donations = df_income[df_income[i_n].astype(str).str.strip() == n.strip()]
+                        total_donated = pd.to_numeric(user_donations[i_a], errors='coerce').sum()
+                        
+                        df_target.loc[idx, t_n] = n
+                        df_target.loc[idx, t_p] = p
+                        df_target.loc[idx, t_a] = a
+                        df_target.loc[idx, '년간작정금액'] = a * 12
+                        df_target.loc[idx, '헌금액'] = total_donated
+                        df_target.loc[idx, '년간작정 잔여금액'] = (a * 12) - total_donated
+                        
                         if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '작정액', df_target)):
                             st.session_state.mode_tgt = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_tgt = None; st.rerun()
 
     elif menu == "📊 결산 및 통계":
-        t_inc = pd.to_numeric(df_income['금액'], errors='coerce').sum() if '금액' in df_income.columns else 0
+        t_inc = pd.to_numeric(df_income[i_a], errors='coerce').sum() if i_a in df_income.columns else 0
         t_exp = pd.to_numeric(df_expense['금액'], errors='coerce').sum() if '금액' in df_expense.columns else 0
         st.subheader("📊 전체 요약")
         c1, c2, c3 = st.columns(3)
         c1.metric("총 수입", f"{int(t_inc):,} 원"); c2.metric("총 지출", f"{int(t_exp):,} 원"); c3.metric("현재 잔액", f"{int(t_inc - t_exp):,} 원")
 
     elif menu == "🖨️ 인쇄용 집계표":
-        with st.spinner("생성 중..."): data = generate_summary_excel(df_income, df_target, raw_excel)
-        st.download_button("📥 엑셀 다운로드", data=data, file_name="최종집계.xlsx")
+        st.subheader("🖨️ 개인별 집계표 생성 및 인쇄여부 일괄 업데이트")
+        
+        # [신규 기능] 기준월 선택 드롭다운
+        available_months = sorted([str(m) for m in df_income[i_y].unique() if str(m).isdigit() and len(str(m)) == 6], reverse=True)
+        if not available_months: available_months = [datetime.now().strftime("%Y%m")]
+        
+        target_month = st.selectbox("📌 기준월 선택 (해당 월에 헌금 내역이 있으면 '인쇄여부 Y'로 자동 업데이트됩니다)", available_months)
+        
+        if st.button("🔄 인쇄여부 업데이트 및 엑셀 다운로드 준비"):
+            with st.spinner("작정액 시트 업데이트 및 엑셀 생성 중..."):
+                # 1. 인쇄여부 Y/N 로직
+                for idx, row in df_target.iterrows():
+                    name = str(row.get(t_n, '')).strip()
+                    if not name or name == 'nan': continue
+                    
+                    # 기준월에 헌금한 내역 찾기
+                    donated_this_month = df_income[
+                        (df_income[i_n].astype(str).str.strip() == name) & 
+                        (df_income[i_y].astype(str).str.strip() == target_month)
+                    ]
+                    sum_this_month = pd.to_numeric(donated_this_month[i_a], errors='coerce').sum()
+                    
+                    # 헌금액이 0보다 크면 Y, 아니면 N
+                    df_target.loc[idx, '인쇄여부'] = 'Y' if sum_this_month > 0 else 'N'
+                    
+                    # 덤으로 모든 최신 수식값도 한 번 더 엑셀에 갱신해 줍니다.
+                    m_amt = pd.to_numeric(row.get(t_a, 0), errors='coerce')
+                    m_amt = 0 if pd.isna(m_amt) else m_amt
+                    user_donations = df_income[df_income[i_n].astype(str).str.strip() == name]
+                    total_donated = pd.to_numeric(user_donations[i_a], errors='coerce').sum()
+                    df_target.loc[idx, '년간작정금액'] = m_amt * 12
+                    df_target.loc[idx, '헌금액'] = total_donated
+                    df_target.loc[idx, '년간작정 잔여금액'] = (m_amt * 12) - total_donated
+
+                # 2. 구글 드라이브에 작정액 엑셀 덮어쓰기
+                save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '작정액', df_target))
+                
+                # 3. 1~12월 집계표 엑셀 생성
+                data = generate_summary_excel(df_income, df_target, raw_excel)
+                st.session_state.download_data = data
+                st.success(f"✅ {target_month}월 기준 '인쇄여부'가 업데이트되었습니다. 아래에서 엑셀을 다운로드하세요!")
+                
+        if 'download_data' in st.session_state:
+            st.download_button("📥 엑셀 다운로드", data=st.session_state.download_data, file_name="최종집계.xlsx")
