@@ -12,7 +12,7 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from datetime import datetime
 
 # --- 1. 앱 기본 설정 및 모바일/사파리 최종 보정 CSS ---
-st.set_page_config(page_title="2026 선교헌금 관리", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="선교헌금 관리", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
     <style>
@@ -102,7 +102,7 @@ if not st.session_state["authenticated"]:
     col1, col2, col3 = st.columns([1, 2, 1]) 
     with col2:
         st.title("⛪ 선교헌금 관리 시스템")
-        st.info("🔒 접근 권한이 필요합니다. ID와 비밀번호를 입력해 주세요.")
+        st.info("🔒ID/비밀번호 입력")
         with st.form("login_form"):
             input_id = st.text_input("아이디 (ID)")
             input_pwd = st.text_input("비밀번호 (Password)", type="password")
@@ -118,7 +118,7 @@ if not st.session_state["authenticated"]:
 
 # [모바일 최적화] 사이드바 구성
 with st.sidebar:
-    st.title("⛪ 2026 선교헌금")
+    st.title("⛪ 선교헌금")
     st.write(f"👤 **{st.session_state['current_user']}**님 접속 중")
     if st.button("로그아웃", use_container_width=True):
         st.session_state["authenticated"] = False
