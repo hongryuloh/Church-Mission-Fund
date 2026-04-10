@@ -43,7 +43,7 @@ if not st.session_state["authenticated"]:
 # 로그인을 통과한 사람만 아래 본문 코드가 실행됩니다.
 # =====================================================================
 
-# 우측 상단에 현재 접속자 표시 및 로그아웃 버튼 (제목 중복 방지)
+# 우측 상단에 현재 접속자 표시 및 로그아웃 버튼
 c1, c2 = st.columns([8, 1])
 with c1: st.title("⛪ 2026 선교헌금 관리 시스템")
 with c2: 
@@ -301,15 +301,21 @@ def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
     ws.page_margins.left = ws.page_margins.right = 0.25
     output = io.BytesIO(); wb.save(output); return output.getvalue()
 
-# --- 5. 앱 화면 구성 (중복 제목 삭제 완료) ---
+# --- 5. 앱 화면 구성 ---
 for k in ['edit_idx_inc', 'edit_idx_exp', 'edit_idx_tgt', 'mode_inc', 'mode_exp', 'mode_tgt']:
     if k not in st.session_state: st.session_state[k] = None
-
 with st.spinner('데이터 동기화 중...'):
     df_income, df_target, df_expense, raw_excel = load_data(FILE_ID)
 
 if df_income is not None:
-    menu = st.sidebar.radio("메뉴", ["🔍 개인별 조회", "✍️ 데이터 관리", "📊 결산/주단위집계", "🖨️ 인쇄용 집계표"])
+    # [핵심 로직] 권한별 메뉴 분리 (RBAC)
+    if st.session_state["current_user"] in ["admin", "mission01"]:
+        menu_options = ["🔍 개인별 조회", "✍️ 데이터 관리", "📊 결산/주단위집계", "🖨️ 인쇄용 집계표"]
+    else:
+        menu_options = ["📊 결산/주단위집계"]
+        
+    menu = st.sidebar.radio("메뉴", menu_options)
+    
     t_n, t_p, t_a = get_col(df_target, ['이름', '성명'], 0), get_col(df_target, ['직분'], 1), get_col(df_target, ['월별 작정액', '작정액'], 2)
     i_n, i_y, i_a = get_col(df_income, ['이름', '성명'], 2), get_col(df_income, ['년월'], 1), get_col(df_income, ['금액'], 3)
     e_n, e_d, e_a = get_col(df_expense, ['내역'], 2), get_col(df_expense, ['날짜'], 0), get_col(df_expense, ['금액'], 3)
