@@ -11,10 +11,32 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from datetime import datetime
 
-# --- 1. 앱 기본 설정 및 다중 계정 로그인 검문소 ---
+# --- 1. 앱 기본 설정 및 모바일 하단 고정바 CSS ---
 st.set_page_config(page_title="2026 선교헌금 관리", layout="wide")
 
-# (1) 세션에 로그인 상태 저장
+# 모바일에서 버튼들을 하단에 고정하고 한 줄로 배치하기 위한 커스텀 스타일
+st.markdown("""
+    <style>
+    /* 하단 고정 영역 스타일 */
+    [data-testid="stVerticalBlock"] > div:last-child .fixed-footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        background-color: white;
+        padding: 10px 15px 30px 15px;
+        border-top: 1px solid #ddd;
+        z-index: 999;
+    }
+    @media (prefers-color-scheme: dark) {
+        .fixed-footer { background-color: #1e1e1e !important; border-top: 1px solid #333 !important; }
+    }
+    /* 버튼 간격 좁히기 */
+    .stColumn > div { padding: 0 2px !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# (1) 세션 상태 초기화
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 if "current_user" not in st.session_state:
@@ -39,10 +61,6 @@ if not st.session_state["authenticated"]:
                     st.error("❌ 아이디 또는 비밀번호가 틀렸습니다.")
     st.stop() 
 
-# =====================================================================
-# 로그인을 통과한 사람만 아래 본문 코드가 실행됩니다.
-# =====================================================================
-
 # [모바일 최적화] 제목과 로그아웃 버튼을 사이드바 상단으로 이동
 with st.sidebar:
     st.title("⛪ 2026 선교헌금")
@@ -51,7 +69,7 @@ with st.sidebar:
         st.session_state["authenticated"] = False
         st.session_state["current_user"] = ""
         st.rerun()
-    st.markdown("---") # 구분선
+    st.markdown("---") 
 
 # --- 2. 보안 설정 및 헬퍼 함수 ---
 FILE_ID = st.secrets["google"]["file_id"]
@@ -106,8 +124,7 @@ def load_data(file_id):
                         header_idx = i; break
                 df = pd.read_excel(io.BytesIO(raw_excel), sheet_name=sheet_name, header=header_idx).astype(object)
                 return df.dropna(how='all').reset_index(drop=True)
-            except: 
-                return pd.DataFrame(columns=default_cols).astype(object)
+            except: return pd.DataFrame(columns=default_cols).astype(object)
 
         df_income = robust_load('헌금수입', ['날짜', '년월', '이름', '금액', '비고'])
         df_target = robust_load('작정액', ['이름', '직분', '월별 작정액', '년간작정금액', '헌금액', '년간작정 잔여금액', '인쇄여부'])
@@ -124,7 +141,7 @@ def load_data(file_id):
                         
         return df_income, df_target, df_expense, raw_excel
     except Exception as e:
-        st.error(f"데이터 로드 중 오류 발생: {e}")
+        st.error(f"데이터 로드 오류: {e}")
         return None, None, None, None
 
 def save_to_drive(file_id, excel_bytes):
@@ -142,8 +159,7 @@ def overwrite_sheet_preserve(raw_excel, sheet_name, df_new):
     header_row = 1
     for r in range(1, 11):
         vals = [str(ws.cell(row=r, column=c).value).strip() for c in range(1, ws.max_column + 1) if ws.cell(row=r, column=c).value is not None]
-        if any(v in ['날짜', '이름', '성명', '내역', '작정액', '월별 작정액'] for v in vals):
-            header_row = r; break
+        if any(v in ['날짜', '이름', '성명', '내역', '작정액', '월별 작정액'] for v in vals): header_row = r; break
     if ws.max_row > header_row: ws.delete_rows(header_row + 1, ws.max_row - header_row)
     header_map = {str(ws.cell(row=header_row, column=c).value).strip(): c for c in range(1, ws.max_column + 1) if ws.cell(row=header_row, column=c).value is not None}
     target_row = header_row + 1
@@ -175,7 +191,7 @@ def append_dict_to_excel(raw_excel, sheet_name, row_dict):
         ws.cell(row=target_row, column=header_map[key], value=val)
     output = io.BytesIO(); wb.save(output); return output.getvalue()
 
-# --- 3. 데이터 계산 ---
+# --- 3. 데이터 계산 로직 ---
 def calculate_details(user_name, df_income, df_target, start_year=2026):
     t_n = get_col(df_target, ['이름', '성명'], 0)
     t_a = get_col(df_target, ['월별 작정액', '작정액'], 2)
@@ -199,7 +215,8 @@ def calculate_details(user_name, df_income, df_target, start_year=2026):
                 rem = commit - alloc[ptr]
                 if rem <= 0.01: ptr += 1
                 else:
-                    amt = min(val, rem); txt = f"{int(str(pm)[-2:]):02d}월납"
+                    amt = min(val, rem)
+                    txt = f"{int(str(pm)[-2:]):02d}월납"
                     lab[ptr] = txt if lab[ptr] == "" else f"{lab[ptr]}\n{txt}"
                     alloc[ptr] += amt; val -= amt
                     if alloc[ptr] >= commit - 0.01: ptr += 1
@@ -207,11 +224,13 @@ def calculate_details(user_name, df_income, df_target, start_year=2026):
         for pm in sorted_m:
             try:
                 m = int(str(pm)[-2:])
-                if 1 <= m <= 12: alloc[m] = float(paid.get(pm, 0)); lab[m] = f"{m:02d}월납"
+                if 1 <= m <= 12:
+                    alloc[m] = float(paid.get(pm, 0))
+                    if alloc[m] > 0: lab[m] = f"{m:02d}월납"
             except: pass 
     return {"name": user_name, "commit": commit, "alloc": alloc[1:], "labs": lab[1:], "total": total_donated}
 
-# --- 4. 인쇄 포맷 ---
+# --- 4. 인쇄 포맷 (원본 유지) ---
 def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
     wb = openpyxl.Workbook(); ws = wb.active; ws.title = "개인별 헌금내역"
     for c in range(1, 19): ws.column_dimensions[get_column_letter(c)].width = 8.13
@@ -237,41 +256,55 @@ def generate_summary_excel(df_income, df_target, target_month, start_year=2026):
         ws.merge_cells(start_row=r+1, start_column=4+c_off, end_row=r+1, end_column=6+c_off)
         ws.cell(row=r+1, column=4+c_off, value="선교헌금 합계 :").alignment = Alignment(horizontal='right', vertical='center')
         ws.merge_cells(start_row=r+1, start_column=7+c_off, end_row=r+1, end_column=8+c_off)
-        t_c = ws.cell(row=r+1, column=7+c_off, value=user['total']); t_c.font, t_c.number_format, t_c.alignment = Font(bold=True), '#,##0', center_align
+        t_c = ws.cell(row=r+1, column=7+c_off, value=user['total'])
+        t_c.font, t_c.number_format, t_c.alignment = Font(bold=True), '#,##0', center_align
         for row_i in range(r+2, r+8):
             for col_i in range(1+c_off, 9+c_off): ws.cell(row=row_i, column=col_i).border = thin_border; ws.cell(row=row_i, column=col_i).alignment = center_align
         ws.cell(row=r+2, column=1+c_off, value="이름").font = Font(bold=True)
         ws.cell(row=r+2, column=2+c_off, value="월작정액").font = Font(bold=True)
         for i, m in enumerate(["01", "02", "03", "04", "05", "06"], 3): ws.cell(row=r+2, column=i+c_off, value=m).font = Font(bold=True)
         for i, m in enumerate(["07", "08", "09", "10", "11", "12"], 3): ws.cell(row=r+5, column=i+c_off, value=m).font = Font(bold=True)
-        ws.merge_cells(start_row=r+3, start_column=1+c_off, end_row=r+7, end_column=1+c_off); ws.cell(row=r+3, column=1+c_off, value=f"{user['name']}\n{user['pos']}").font = Font(bold=True)
-        ws.merge_cells(start_row=r+3, start_column=2+c_off, end_row=r+7, end_column=2+c_off); cc = ws.cell(row=r+3, column=2+c_off, value=user['commit'] if user['commit'] > 0 else "-")
+        ws.merge_cells(start_row=r+3, start_column=1+c_off, end_row=r+7, end_column=1+c_off)
+        ws.cell(row=r+3, column=1+c_off, value=f"{user['name']}\n{user['pos']}").font = Font(bold=True)
+        ws.merge_cells(start_row=r+3, start_column=2+c_off, end_row=r+7, end_column=2+c_off)
+        cc = ws.cell(row=r+3, column=2+c_off, value=user['commit'] if user['commit'] > 0 else "-")
         if user['commit'] > 0: cc.number_format = '#,##0'
         for i in range(6):
             ws.cell(row=r+3, column=i+3+c_off, value=user['labs'][i])
-            c1 = ws.cell(row=r+4, column=i+3+c_off, value=user['alloc'][i] if user['alloc'][i] > 0 else ""); c1.number_format = '#,##0' if user['alloc'][i] > 0 else ""
+            c1 = ws.cell(row=r+4, column=i+3+c_off, value=user['alloc'][i] if user['alloc'][i] > 0 else "")
+            if user['alloc'][i] > 0: c1.number_format = '#,##0'
             ws.cell(row=r+6, column=i+3+c_off, value=user['labs'][i+6])
-            c2 = ws.cell(row=r+7, column=i+3+c_off, value=user['alloc'][i+6] if user['alloc'][i+6] > 0 else ""); c2.number_format = '#,##0' if user['alloc'][i+6] > 0 else ""
-        ws.merge_cells(start_row=r+8, start_column=1+c_off, end_row=r+8, end_column=8+c_off); ws.cell(row=r+8, column=1+c_off, value="선교헌금에 관심가져주셔서 감사합니다.").alignment = center_align
+            c2 = ws.cell(row=r+7, column=i+3+c_off, value=user['alloc'][i+6] if user['alloc'][i+6] > 0 else "")
+            if user['alloc'][i+6] > 0: c2.number_format = '#,##0'
+        ws.merge_cells(start_row=r+8, start_column=1+c_off, end_row=r+8, end_column=8+c_off)
+        ws.cell(row=r+8, column=1+c_off, value="선교헌금에 관심가져주셔서 감사합니다.").alignment = center_align
 
     for i in range(0, len(user_list), 2):
-        u_l, u_r = user_list[i], user_list[i+1] if i+1 < len(user_list) else None
-        for r_idx in range(current_row, current_row + 9): ws.row_dimensions[r_idx].height = 25; ws.cell(row=r_idx, column=9).border = Border(right=Side(style='thin', color='000000'))
-        draw_user_block(current_row, 0, u_l) 
-        if u_r: draw_user_block(current_row, 10, u_r)
-        p_idx = i // 2
-        if p_idx % 2 == 0:
-            g_s = current_row + 9
-            for r_idx in range(g_s, g_s + 3): ws.row_dimensions[r_idx].height = 25; ws.cell(row=r_idx, column=9).border = Border(right=Side(style='thin', color='000000'))
-            for col_i in range(1, 19): ws.cell(row=g_s, column=col_i).border = Border(bottom=Side(style='dashed', color='888888'), right=ws.cell(row=g_s, column=col_i).border.right)
+        user_left, user_right = user_list[i], user_list[i+1] if i+1 < len(user_list) else None
+        for r_idx in range(current_row, current_row + 9):
+            ws.row_dimensions[r_idx].height = 25
+            ws.cell(row=r_idx, column=9).border = Border(right=Side(style='thin', color='000000'))
+        draw_user_block(current_row, 0, user_left) 
+        if user_right: draw_user_block(current_row, 10, user_right)
+        pair_index = i // 2
+        if pair_index % 2 == 0:
+            gap_start = current_row + 9
+            for r_idx in range(gap_start, gap_start + 3):
+                ws.row_dimensions[r_idx].height = 25
+                ws.cell(row=r_idx, column=9).border = Border(right=Side(style='thin', color='000000'))
+            for col_i in range(1, 19): ws.cell(row=gap_start, column=col_i).border = Border(bottom=Side(style='dashed', color='888888'), right=ws.cell(row=gap_start, column=col_i).border.right)
             current_row += 12 
         else:
-            g_s = current_row + 9; ws.row_dimensions[g_s].height = 25; ws.cell(row=g_s, column=9).border = Border(right=Side(style='thin', color='000000'))
-            for col_i in range(1, 19): ws.cell(row=g_s, column=col_i).border = Border(bottom=Side(style='dashed', color='888888'), right=ws.cell(row=g_s, column=col_i).border.right)
-            ws.row_breaks.append(Break(id=g_s)); current_row += 10 
-    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE; out = io.BytesIO(); wb.save(out); return out.getvalue()
+            gap_start = current_row + 9
+            ws.row_dimensions[gap_start].height = 25
+            ws.cell(row=gap_start, column=9).border = Border(right=Side(style='thin', color='000000'))
+            for col_i in range(1, 19): ws.cell(row=gap_start, column=col_i).border = Border(bottom=Side(style='dashed', color='888888'), right=ws.cell(row=gap_start, column=col_i).border.right)
+            ws.row_breaks.append(Break(id=gap_start)); current_row += 10 
+    ws.page_setup.orientation, ws.page_setup.fitToPage, ws.page_setup.fitToWidth = ws.ORIENTATION_LANDSCAPE, True, 1  
+    ws.page_margins.left = ws.page_margins.right = 0.25
+    output = io.BytesIO(); wb.save(output); return output.getvalue()
 
-# --- 5. 앱 화면 구성 ---
+# --- 5. 앱 화면 구성 (핵심 로직 시작) ---
 for k in ['edit_idx_inc', 'edit_idx_exp', 'edit_idx_tgt', 'mode_inc', 'mode_exp', 'mode_tgt']:
     if k not in st.session_state: st.session_state[k] = None
 with st.spinner('데이터 동기화 중...'):
@@ -282,6 +315,7 @@ if df_income is not None:
         menu_options = ["🔍 개인별 조회", "✍️ 데이터 관리", "📊 결산/주단위집계", "🖨️ 인쇄용 집계표"]
     else: menu_options = ["📊 결산/주단위집계"]
     menu = st.sidebar.radio("메뉴", menu_options)
+    
     t_n, t_p, t_a = get_col(df_target, ['이름', '성명'], 0), get_col(df_target, ['직분'], 1), get_col(df_target, ['월별 작정액', '작정액'], 2)
     i_n, i_y, i_a = get_col(df_income, ['이름', '성명'], 2), get_col(df_income, ['년월'], 1), get_col(df_income, ['금액'], 3)
     e_n, e_d, e_a = get_col(df_expense, ['내역'], 2), get_col(df_expense, ['날짜'], 0), get_col(df_expense, ['금액'], 3)
@@ -297,38 +331,51 @@ if df_income is not None:
                 st.subheader(f"📄 {res['name']} ({pos})")
                 st.write(f"기준일({datetime.now().strftime('%Y.%m.%d')}) 현재 / 월 작정액: {int(res['commit']):,}원 / 총 헌금액: {int(res['total']):,}원")
                 html = "<table style='width:100%; border-collapse: collapse; text-align: center; margin-top: 15px; background-color: #ffffff; color: #333333;'>"
-                html += "<tr style='background-color: #f8f9fa;'>" + "".join([f"<th style='border: 1px solid #ddd; padding: 10px;'>{i}월</th>" for i in range(1, 7)]) + "</tr><tr>"
+                html += "<tr style='background-color: #f8f9fa;'>"
+                for i in range(1, 7): html += f"<th style='border: 1px solid #ddd; padding: 10px;'>{i}월</th>"
+                html += "</tr><tr>"
                 for i in range(6):
-                    l, a = str(res['labs'][i]).replace('\n', '<br>'), f"{int(res['alloc'][i]):,}원" if res['alloc'][i] > 0 else "0원"
-                    html += f"<td style='border: 1px solid #ddd; padding: 15px;'><span style='font-size:0.85em; color:#888;'>{l}</span><br><b>{a}</b></td>"
-                html += "</tr><tr style='background-color: #f8f9fa;'>" + "".join([f"<th style='border: 1px solid #ddd; padding: 10px;'>{i}월</th>" for i in range(7, 13)]) + "</tr><tr>"
+                    lab, amt = str(res['labs'][i]).replace('\n', '<br>'), f"{int(res['alloc'][i]):,}원" if res['alloc'][i] > 0 else "0원"
+                    html += f"<td style='border: 1px solid #ddd; padding: 15px;'><span style='font-size:0.85em; color:#888;'>{lab}</span><br><b>{amt}</b></td>"
+                html += "</tr><tr style='background-color: #f8f9fa;'>"
+                for i in range(7, 13): html += f"<th style='border: 1px solid #ddd; padding: 10px;'>{i}월</th>"
+                html += "</tr><tr>"
                 for i in range(6, 12):
-                    l, a = str(res['labs'][i]).replace('\n', '<br>'), f"{int(res['alloc'][i]):,}원" if res['alloc'][i] > 0 else "0원"
-                    html += f"<td style='border: 1px solid #ddd; padding: 15px;'><span style='font-size:0.85em; color:#888;'>{l}</span><br><b>{a}</b></td>"
+                    lab, amt = str(res['labs'][i]).replace('\n', '<br>'), f"{int(res['alloc'][i]):,}원" if res['alloc'][i] > 0 else "0원"
+                    html += f"<td style='border: 1px solid #ddd; padding: 15px;'><span style='font-size:0.85em; color:#888;'>{lab}</span><br><b>{amt}</b></td>"
                 html += "</tr></table>"; st.markdown(html, unsafe_allow_html=True)
 
     elif menu == "✍️ 데이터 관리":
         tab1, tab2, tab3 = st.tabs(["💰 헌금 수입", "📉 지출 내역", "👤 작정액 관리"])
         with tab1: 
             if st.session_state.mode_inc is None:
-                # [최신순 정렬]
+                # [최신순 정렬 추가]
                 df_view = df_income.copy()
-                df_view['temp_dt'] = pd.to_datetime(df_view['날짜'], errors='coerce')
-                df_view = df_view.sort_values(by='temp_dt', ascending=False).drop(columns=['temp_dt'])
+                df_view['dt_sort'] = pd.to_datetime(df_view['날짜'], errors='coerce')
+                df_view = df_view.sort_values(by='dt_sort', ascending=False).drop(columns=['dt_sort'])
                 if '날짜' in df_view.columns: df_view['날짜'] = df_view['날짜'].apply(format_date_str)
                 if i_a in df_view.columns: df_view[i_a] = pd.to_numeric(df_view[i_a], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
                 disp = [c for c in df_view.columns if not str(c).startswith('Unnamed') and str(c) != i_y]
                 st.dataframe(df_view[disp].dropna(subset=[i_n]), use_container_width=True)
-                # [가로 배치 최적화]
-                c1, c2 = st.columns(2)
-                with c1:
-                    if st.button("➕ 신규 등록", key="inc_a", use_container_width=True): st.session_state.mode_inc = 'add'; st.rerun()
-                idx = st.number_input("행 번호", min_value=0, max_value=max(0, len(df_income)-1), key="inc_i")
-                bc1, bc2 = st.columns(2)
-                with bc1:
-                    if st.button("📝 수정", key="inc_e", use_container_width=True): st.session_state.edit_idx_inc, st.session_state.mode_inc = idx, 'edit'; st.rerun()
-                with bc2:
-                    if st.button("🗑️ 삭제", key="inc_d", use_container_width=True): st.session_state.edit_idx_inc, st.session_state.mode_inc = idx, 'delete_check'; st.rerun()
+                
+                # [하단 고정 바 - 버튼 한 줄 배치]
+                st.write("") # 간격
+                with st.container():
+                    st.markdown('<div class="fixed-footer">', unsafe_allow_html=True)
+                    bc1, bc2, bc3, bc4 = st.columns([1.2, 1, 1, 1])
+                    with bc1: 
+                        if st.button("➕신규", key="inc_new", use_container_width=True): 
+                            st.session_state.mode_inc = 'add'; st.rerun()
+                    with bc2: 
+                        idx = st.number_input("행", 0, len(df_income)-1, key="inc_idx_in", label_visibility="collapsed")
+                    with bc3: 
+                        if st.button("📝수정", key="inc_edit", use_container_width=True): 
+                            st.session_state.edit_idx_inc, st.session_state.mode_inc = idx, 'edit'; st.rerun()
+                    with bc4: 
+                        if st.button("🗑️삭제", key="inc_del", use_container_width=True): 
+                            st.session_state.edit_idx_inc, st.session_state.mode_inc = idx, 'delete_check'; st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
+                    
             elif st.session_state.mode_inc == 'add':
                 with st.form("inc_add"):
                     d, amt = st.date_input("입금일자"), st.number_input("금액", min_value=0, step=1000)
@@ -355,22 +402,27 @@ if df_income is not None:
 
         with tab2:
             if st.session_state.mode_exp is None:
-                # [최신순 정렬]
+                # [최신순 정렬 추가]
                 df_exp_v = df_expense.copy()
-                df_exp_v['temp_dt'] = pd.to_datetime(df_exp_v['날짜'], errors='coerce')
-                df_exp_v = df_exp_v.sort_values(by='temp_dt', ascending=False).drop(columns=['temp_dt'])
+                df_exp_v['dt_sort'] = pd.to_datetime(df_exp_v['날짜'], errors='coerce')
+                df_exp_v = df_exp_v.sort_values(by='dt_sort', ascending=False).drop(columns=['dt_sort'])
                 if '날짜' in df_exp_v.columns: df_exp_v['날짜'] = df_exp_v['날짜'].apply(format_date_str)
                 if '금액' in df_exp_v.columns: df_exp_v['금액'] = pd.to_numeric(df_exp_v['금액'], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
-                st.dataframe(df_exp_v[[c for c in df_exp_v.columns if c != '년월']], use_container_width=True)
-                c_ea = st.columns(2)
-                with c_ea[0]:
-                    if st.button("➕ 지출 등록", key="exp_a", use_container_width=True): st.session_state.mode_exp = 'add'; st.rerun()
-                idx_e = st.number_input("행 번호", min_value=0, max_value=max(0, len(df_expense)-1), key="exp_i")
-                ebc1, ebc2 = st.columns(2)
-                with ebc1:
-                    if st.button("📝 지출 수정", key="exp_e", use_container_width=True): st.session_state.edit_idx_exp, st.session_state.mode_exp = idx_e, 'edit'; st.rerun()
-                with ebc2:
-                    if st.button("🗑️ 지출 삭제", key="exp_d", use_container_width=True): st.session_state.edit_idx_exp, st.session_state.mode_exp = idx_e, 'delete_check'; st.rerun()
+                st.dataframe(df_exp_v[[c for c in df_exp_v.columns if str(c) != '년월']], use_container_width=True)
+                
+                with st.container():
+                    st.markdown('<div class="fixed-footer">', unsafe_allow_html=True)
+                    ec1, ec2, ec3, ec4 = st.columns([1.2, 1, 1, 1])
+                    with ec1: 
+                        if st.button("➕지출", key="exp_new", use_container_width=True): st.session_state.mode_exp = 'add'; st.rerun()
+                    with ec2: 
+                        idx_e = st.number_input("행", 0, len(df_expense)-1, key="exp_idx_in", label_visibility="collapsed")
+                    with ec3: 
+                        if st.button("📝수정", key="exp_edit", use_container_width=True): st.session_state.edit_idx_exp, st.session_state.mode_exp = idx_e, 'edit'; st.rerun()
+                    with ec4: 
+                        if st.button("🗑️삭제", key="exp_del", use_container_width=True): st.session_state.edit_idx_exp, st.session_state.mode_exp = idx_e, 'delete_check'; st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
+
             elif st.session_state.mode_exp == 'add':
                 with st.form("exp_add"):
                     d, item, amt, note = st.date_input("지출일자"), st.text_input("지출항목"), st.number_input("금액", min_value=0, step=1000), st.text_input("비고")
@@ -381,11 +433,12 @@ if df_income is not None:
             elif st.session_state.mode_exp == 'edit':
                 curr = df_expense.iloc[st.session_state.edit_idx_exp]
                 with st.form("exp_edit"):
-                    new_d = st.date_input("날짜", value=pd.to_datetime(curr.get('날짜', datetime.now())))
-                    new_i, new_a, new_b = st.text_input("내역", value=str(curr.get('내역', ''))), st.number_input("금액", value=int(pd.to_numeric(curr.get('금액', 0), errors='coerce') or 0)), st.text_input("비고", value=str(curr.get('비고', '')))
+                    new_d = st.date_input("날짜", value=pd.to_datetime(curr.get('날짜', datetime.now())) if pd.notna(curr.get('날짜')) else datetime.now())
+                    new_i, new_a, new_b = st.text_input("내역", value=str(curr.get('내역', ''))), st.number_input("금액", value=int(pd.to_numeric(curr.get('금액', 0), errors='coerce') or 0), step=1000), st.text_input("비고", value=str(curr.get('비고', '')) if pd.notna(curr.get('비고')) else "")
                     if st.form_submit_button("✅ 수정 완료"):
-                        df_expense.iloc[st.session_state.edit_idx_exp] = [new_d.strftime("%Y-%m-%d"), new_d.strftime("%Y%m"), new_i, new_a, new_b]
+                        df_expense.loc[df_expense.index[st.session_state.edit_idx_exp], ['날짜', '년월', '내역', '금액', '비고']] = [new_d.strftime("%Y-%m-%d"), new_d.strftime("%Y%m"), new_i, new_a, new_b]
                         if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '지출', df_expense)): st.session_state.mode_exp = None; st.rerun()
+                    if st.form_submit_button("취소"): st.session_state.mode_exp = None; st.rerun()
             elif st.session_state.mode_exp == 'delete_check':
                 if st.button("🔴 지출 삭제 실행", use_container_width=True):
                     df_expense = df_expense.drop(df_expense.index[st.session_state.edit_idx_exp])
@@ -403,29 +456,37 @@ if df_income is not None:
                     m_amt = pd.to_numeric(row.get(t_a, 0), errors='coerce') or 0
                     df_view.loc[idx, ['년간작정금액', '헌금액', '년간작정 잔여금액']] = [m_amt * 12, total_donated, (m_amt * 12) - total_donated]
                 for c in [t_a, '년간작정금액', '헌금액', '년간작정 잔여금액']: df_view[c] = pd.to_numeric(df_view[c], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
-                st.dataframe(df_view[[c for c in df_view.columns if not str(c).startswith('Unnamed')]], use_container_width=True)
-                c_ta = st.columns(2)
-                with c_ta[0]:
-                    if st.button("➕ 신규 성도", key="tgt_a", use_container_width=True): st.session_state.mode_tgt = 'add'; st.rerun()
-                idx_t = st.number_input("행 번호", min_value=0, max_value=max(0, len(df_target)-1), key="tgt_i")
-                tbc1, tbc2 = st.columns(2)
-                with tbc1:
-                    if st.button("📝 수정", key="tgt_e", use_container_width=True): st.session_state.edit_idx_tgt, st.session_state.mode_tgt = idx_t, 'edit'; st.rerun()
-                with tbc2:
-                    if st.button("🗑️ 삭제", key="tgt_d", use_container_width=True): st.session_state.edit_idx_tgt, st.session_state.mode_tgt = idx_t, 'delete_check'; st.rerun()
+                disp = [c for c in df_view.columns if not str(c).startswith('Unnamed')]
+                st.dataframe(df_view[disp], use_container_width=True)
+                
+                with st.container():
+                    st.markdown('<div class="fixed-footer">', unsafe_allow_html=True)
+                    tc1, tc2, tc3, tc4 = st.columns([1.2, 1, 1, 1])
+                    with tc1: 
+                        if st.button("➕신규", key="tgt_new", use_container_width=True): st.session_state.mode_tgt = 'add'; st.rerun()
+                    with tc2: 
+                        idx_t = st.number_input("행", 0, len(df_target)-1, key="tgt_idx_in", label_visibility="collapsed")
+                    with tc3: 
+                        if st.button("📝수정", key="tgt_edit", use_container_width=True): st.session_state.edit_idx_tgt, st.session_state.mode_tgt = idx_t, 'edit'; st.rerun()
+                    with tc4: 
+                        if st.button("🗑️삭제", key="tgt_del", use_container_width=True): st.session_state.edit_idx_tgt, st.session_state.mode_tgt = idx_t, 'delete_check'; st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
+
             elif st.session_state.mode_tgt == 'add':
                 with st.form("tgt_add"):
                     n, p, a = st.text_input("이름"), st.text_input("직분"), st.number_input("월별 작정액", min_value=0, step=1000)
                     if st.form_submit_button("저장"):
                         if save_to_drive(FILE_ID, append_dict_to_excel(raw_excel, '작정액', {t_n: n, t_p: p, t_a: a, '인쇄여부': 'N'})):
                             st.session_state.mode_tgt = None; st.rerun()
+                    if st.form_submit_button("취소"): st.session_state.mode_tgt = None; st.rerun()
             elif st.session_state.mode_tgt == 'edit':
                 curr = df_target.iloc[st.session_state.edit_idx_tgt]
                 with st.form("tgt_edit"):
                     n, p, a = st.text_input("이름", value=str(curr.get(t_n, ''))), st.text_input("직분", value=str(curr.get(t_p, ''))), st.number_input("월별 작정액", value=int(pd.to_numeric(curr.get(t_a, 0), errors='coerce') or 0), step=1000)
                     if st.form_submit_button("✅ 수정 완료"):
-                        df_target.iloc[st.session_state.edit_idx_tgt, [0, 1, 2]] = [n, p, a]
+                        df_target.loc[df_target.index[st.session_state.edit_idx_tgt], [t_n, t_p, t_a]] = [n, p, a]
                         if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '작정액', df_target)): st.session_state.mode_tgt = None; st.rerun()
+                    if st.form_submit_button("취소"): st.session_state.mode_tgt = None; st.rerun()
 
     elif menu == "📊 결산/주단위집계":
         tab1, tab2 = st.tabs(["📅 월별 결산내역", "📆 주단위 결산내역"])
