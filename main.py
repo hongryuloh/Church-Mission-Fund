@@ -404,7 +404,6 @@ if df_income is not None:
                     st.markdown('</div>', unsafe_allow_html=True)
                     
             elif st.session_state.mode_inc == 'add':
-                # 신규 수입 입력: 순서를 일자 -> 이름 -> 금액 -> 비고 순으로 변경
                 with st.form("inc_add"):
                     d = st.date_input("입금일자")
                     opts = [f"{r[t_n]} ({r[t_p]})" if pd.notna(r.get(t_p)) else str(r.get(t_n)) for _, r in df_target.iterrows() if pd.notna(r.get(t_n)) and r.get(t_n)!='합계']
@@ -460,17 +459,12 @@ if df_income is not None:
                     st.markdown('</div>', unsafe_allow_html=True)
 
             elif st.session_state.mode_exp == 'add':
-                # 신규 지출 항목 (기존 항목 리스트에서 선택 기능 추가)
                 with st.form("exp_add"):
                     d = st.date_input("지출일자")
-                    
-                    # 기존 엑셀에 저장된 지출내역 중 중복 제거 (비어있는 값 제외)
                     existing_items = sorted(list(set([str(x).strip() for x in df_expense.get('내역', []) if pd.notna(x) and str(x).strip()])))
                     exp_opts = existing_items + ["➕ 직접 입력 (아래 빈칸에 작성)"]
-                    
                     sel_item = st.selectbox("지출항목 선택", exp_opts)
                     custom_item = st.text_input("새 지출항목 (위에서 '직접 입력' 선택 시)")
-                    
                     amt = st.number_input("금액", min_value=0, step=10000)
                     note = st.text_input("비고")
                     
@@ -487,7 +481,6 @@ if df_income is not None:
                 curr = df_expense.iloc[st.session_state.edit_idx_exp]
                 with st.form("exp_edit"):
                     new_d = st.date_input("날짜", value=pd.to_datetime(curr.get('날짜', datetime.now())) if pd.notna(curr.get('날짜')) else datetime.now())
-                    
                     curr_item = str(curr.get('내역', '')).strip()
                     existing_items = sorted(list(set([str(x).strip() for x in df_expense.get('내역', []) if pd.notna(x) and str(x).strip()])))
                     exp_opts = existing_items + ["➕ 직접 입력 (아래 빈칸에 작성)"]
@@ -495,7 +488,6 @@ if df_income is not None:
                     
                     sel_item = st.selectbox("지출항목 선택", exp_opts, index=default_idx)
                     custom_item = st.text_input("새 지출항목 (위에서 '직접 입력' 선택 시)", value=curr_item if default_idx == len(exp_opts)-1 else "")
-                    
                     new_a = st.number_input("금액", value=int(pd.to_numeric(curr.get('금액', 0), errors='coerce') or 0), step=10000)
                     new_b = st.text_input("비고", value=str(curr.get('비고', '')) if pd.notna(curr.get('비고')) else "")
                     
@@ -528,7 +520,6 @@ if df_income is not None:
                     if c in df_view.columns:
                         df_view[c] = pd.to_numeric(df_view[c], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
                 
-                # --- 작정액 관리 화면: 이름, 직분, 작정액만 노출 ---
                 disp = [c for c in [t_n, t_p, t_a] if c is not None and c in df_view.columns]
                 st.dataframe(df_view[disp].dropna(subset=[t_n]), use_container_width=True, height=330)
                 
@@ -547,19 +538,37 @@ if df_income is not None:
 
             elif st.session_state.mode_tgt == 'add':
                 with st.form("tgt_add"):
-                    n, p, a = st.text_input("이름"), st.text_input("직분"), st.number_input("월별 작정액", min_value=0, step=10000)
+                    roles = ["목사", "사모", "전도사", "장로", "안수집사", "권사", "집사", "성도"]
+                    n = st.text_input("이름")
+                    p = st.selectbox("직분", roles, index=7) # 기본값을 '성도'로
+                    a = st.number_input("월별 작정액", min_value=0, step=10000)
+                    
                     if st.form_submit_button("저장"):
                         if save_to_drive(FILE_ID, append_dict_to_excel(raw_excel, '작정액', {t_n: n, t_p: p, t_a: a, '인쇄여부': 'N'})):
                             st.session_state.mode_tgt = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_tgt = None; st.rerun()
+                    
             elif st.session_state.mode_tgt == 'edit':
                 curr = df_target.iloc[st.session_state.edit_idx_tgt]
                 with st.form("tgt_edit"):
-                    n, p, a = st.text_input("이름", value=str(curr.get(t_n, ''))), st.text_input("직분", value=str(curr.get(t_p, ''))), st.number_input("월별 작정액", value=int(pd.to_numeric(curr.get(t_a, 0), errors='coerce') or 0), step=10000)
+                    roles = ["목사", "사모", "전도사", "장로", "안수집사", "권사", "집사", "성도"]
+                    curr_p = str(curr.get(t_p, '')).strip()
+                    
+                    # 엑셀에 이미 저장된 직분이 목록에 없다면(예: 청년 등) 목록에 추가하여 에러 방지
+                    if curr_p and curr_p not in roles:
+                        roles.append(curr_p)
+                        
+                    default_idx = roles.index(curr_p) if curr_p in roles else 7
+                    
+                    n = st.text_input("이름", value=str(curr.get(t_n, '')))
+                    p = st.selectbox("직분", roles, index=default_idx)
+                    a = st.number_input("월별 작정액", value=int(pd.to_numeric(curr.get(t_a, 0), errors='coerce') or 0), step=10000)
+                    
                     if st.form_submit_button("✅ 수정 완료"):
                         df_target.loc[df_target.index[st.session_state.edit_idx_tgt], [t_n, t_p, t_a]] = [n, p, a]
                         if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '작정액', df_target)): st.session_state.mode_tgt = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_tgt = None; st.rerun()
+                    
             elif st.session_state.mode_tgt == 'delete_check':
                 if st.button("🔴 성도 데이터 삭제 확정"):
                     df_target = df_target.drop(df_target.index[st.session_state.edit_idx_tgt])
