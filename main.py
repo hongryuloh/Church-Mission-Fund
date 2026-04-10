@@ -19,7 +19,7 @@ def get_gdrive_service():
     )
     return build('drive', 'v3', credentials=credentials)
 
-# --- 2. 구글 드라이브 데이터 로드 & 저장 함수 ---
+# --- 2. 구글 드라이브 데이터 로드 함수 (V6.1: 3행부터 읽기 자동 추적) ---
 @st.cache_data(ttl=60) 
 def load_data(file_id):
     try:
@@ -30,13 +30,27 @@ def load_data(file_id):
         done = False
         while not done: status, done = downloader.next_chunk()
         file_stream.seek(0)
-        
         raw_excel = file_stream.getvalue() 
-        # 이제 강제로 이름을 바꾸지 않고 엑셀 원본 그대로 가져옵니다. (안정성 극대화)
-        df_income = pd.read_excel(io.BytesIO(raw_excel), sheet_name='헌금수입').astype(object)
-        df_target = pd.read_excel(io.BytesIO(raw_excel), sheet_name='작정액').astype(object)
-        try: df_expense = pd.read_excel(io.BytesIO(raw_excel), sheet_name='지출').astype(object)
-        except: df_expense = pd.DataFrame(columns=['날짜', '년월', '내역', '금액', '비고']).astype(object)
+        
+        # [핵심] 몇 행부터 데이터가 시작되든 진짜 헤더('날짜', '성명' 등)를 찾아냅니다.
+        def robust_load(sheet_name, default_cols):
+            try:
+                df_raw = pd.read_excel(io.BytesIO(raw_excel), sheet_name=sheet_name, header=None).astype(object)
+                header_idx = 0
+                for i in range(min(10, len(df_raw))):
+                    vals = [str(x).strip() for x in df_raw.iloc[i].values if pd.notna(x)]
+                    if any(k in vals for k in ['날짜', '성명', '내역', '작정액']):
+                        header_idx = i; break
+                
+                # 찾아낸 줄(지출 시트의 경우 3행)을 헤더로 삼아 데이터를 로드합니다.
+                df = pd.read_excel(io.BytesIO(raw_excel), sheet_name=sheet_name, header=header_idx).astype(object)
+                return df.dropna(how='all').reset_index(drop=True) # 완전히 빈 줄은 삭제
+            except: 
+                return pd.DataFrame(columns=default_cols).astype(object)
+
+        df_income = robust_load('헌금수입', ['날짜', '년월', '성명', '금액', '비고'])
+        df_target = robust_load('작정액', ['성명', '직분', '작정액'])
+        df_expense = robust_load('지출', ['날짜', '년월', '내역', '금액', '비고'])
             
         return df_income, df_target, df_expense, raw_excel
     except Exception as e:
@@ -50,30 +64,55 @@ def save_to_drive(file_id, excel_bytes):
         service.files().update(fileId=file_id, media_body=media).execute()
         st.cache_data.clear() 
         return True
-    except Exception as e: return False
+    except: return False
 
-def overwrite_sheet(raw_excel, sheet_name, df_new):
+# [핵심] 엑셀 1~2행의 제목 서식을 보호하면서 3행 밑의 데이터만 수정/삭제
+def overwrite_sheet_preserve(raw_excel, sheet_name, df_new):
     wb = openpyxl.load_workbook(io.BytesIO(raw_excel))
-    if sheet_name in wb.sheetnames: del wb[sheet_name]
-    ws = wb.create_sheet(sheet_name)
-    ws.append(df_new.columns.tolist())
-    for r in df_new.values.tolist(): 
-        # NaN 값을 빈칸으로 안전하게 변환
-        ws.append([None if pd.isna(val) else val for val in r])
+    ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.create_sheet(sheet_name)
+    
+    header_row = 1
+    for r in range(1, 11):
+        vals = [str(ws.cell(row=r, column=c).value).strip() for c in range(1, ws.max_column + 1) if ws.cell(row=r, column=c).value is not None]
+        if any(v in ['날짜', '성명', '내역', '작정액'] for v in vals):
+            header_row = r; break
+            
+    # 헤더 아래 기존 데이터만 안전하게 지우기
+    if ws.max_row > header_row: 
+        ws.delete_rows(header_row + 1, ws.max_row - header_row)
+        
+    header_map = {}
+    for col_idx in range(1, ws.max_column + 1):
+        val = ws.cell(row=header_row, column=col_idx).value
+        if val is not None: header_map[str(val).strip()] = col_idx
+            
+    target_row = header_row + 1
+    for _, row_data in df_new.iterrows():
+        for col_name, val in row_data.items():
+            col_str = str(col_name).strip()
+            if col_str in header_map:
+                ws.cell(row=target_row, column=header_map[col_str], value=None if pd.isna(val) else val)
+        target_row += 1
+        
     output = io.BytesIO(); wb.save(output); return output.getvalue()
 
-# [핵심] 순서 무시하고 '이름'을 찾아 데이터를 정확히 넣는 스마트 저장 함수
 def append_dict_to_excel(raw_excel, sheet_name, row_dict):
     wb = openpyxl.load_workbook(io.BytesIO(raw_excel))
     ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.create_sheet(sheet_name)
     
+    header_row = 1
+    for r in range(1, 11):
+        vals = [str(ws.cell(row=r, column=c).value).strip() for c in range(1, ws.max_column + 1) if ws.cell(row=r, column=c).value is not None]
+        if any(v in ['날짜', '성명', '내역', '작정액'] for v in vals):
+            header_row = r; break
+            
     header_map = {}
     for col_idx in range(1, ws.max_column + 1):
-        val = ws.cell(row=1, column=col_idx).value
+        val = ws.cell(row=header_row, column=col_idx).value
         if val is not None: header_map[str(val).strip()] = col_idx
             
-    last_row = 1
-    for row in range(ws.max_row, 0, -1):
+    last_row = header_row
+    for row in range(ws.max_row, header_row - 1, -1):
         if any(ws.cell(row=row, column=c).value is not None for c in range(1, ws.max_column + 1)):
             last_row = row; break
     target_row = last_row + 1
@@ -82,7 +121,7 @@ def append_dict_to_excel(raw_excel, sheet_name, row_dict):
         if key in header_map: ws.cell(row=target_row, column=header_map[key], value=val)
         else:
             new_col = ws.max_column + 1
-            ws.cell(row=1, column=new_col, value=key)
+            ws.cell(row=header_row, column=new_col, value=key)
             ws.cell(row=target_row, column=new_col, value=val)
             header_map[key] = new_col
             
@@ -96,7 +135,7 @@ def format_date_str(x):
     if len(x_str) == 6 and x_str.isdigit(): return f"{x_str[:4]}-{x_str[4:6]}-01"
     return x_str
 
-# --- 3. 데이터 계산 로직 (이름 기반으로 완벽 방어) ---
+# --- 3. 데이터 계산 로직 ---
 def calculate_details(user_name, df_income, df_target, start_year=2026):
     t_n = '성명' if '성명' in df_target.columns else df_target.columns[0]
     t_a = '작정액' if '작정액' in df_target.columns else df_target.columns[2]
@@ -186,8 +225,6 @@ if df_income is not None:
                 if '날짜' in df_view.columns: df_view['날짜'] = df_view['날짜'].apply(format_date_str)
                 if '금액' in df_view.columns: df_view['금액'] = pd.to_numeric(df_view['금액'], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
                 if '성명' in df_view.columns: df_view = df_view.dropna(subset=['성명'])
-                
-                # Unnamed 빈 열들을 숨겨서 화면을 깔끔하게 유지합니다.
                 disp_cols = [c for c in df_view.columns if not str(c).startswith('Unnamed')]
                 st.dataframe(df_view[disp_cols], use_container_width=True)
                 
@@ -200,13 +237,12 @@ if df_income is not None:
             elif st.session_state.mode_inc == 'add':
                 with st.form("inc_add"):
                     d = st.date_input("입금일자")
-                    amt = st.number_input("금액", min_value=0, step=1000) # 1,000원 단위 적용
+                    amt = st.number_input("금액", min_value=0, step=1000) 
                     t_n = '성명' if '성명' in df_target.columns else df_target.columns[0]
                     t_p = '직분' if '직분' in df_target.columns else df_target.columns[1]
                     options = [f"{r[t_n]} ({r[t_p]})" if pd.notna(r.get(t_p)) else str(r.get(t_n)) for _, r in df_target.iterrows() if pd.notna(r.get(t_n))]
                     sel, note = st.selectbox("성명 선택", options), st.text_input("비고")
                     if st.form_submit_button("저장"):
-                        # 위치(순서) 상관없이 지정된 이름의 열에 쏙쏙 들어갑니다.
                         row_dict = {'날짜': d.strftime("%Y-%m-%d"), '년월': d.strftime("%Y%m"), '성명': sel.split(" (")[0], '금액': amt, '비고': note}
                         if save_to_drive(FILE_ID, append_dict_to_excel(raw_excel, '헌금수입', row_dict)):
                             st.session_state.mode_inc = None; st.rerun()
@@ -216,7 +252,7 @@ if df_income is not None:
                 st.warning(f"⚠️ {st.session_state.edit_idx_inc}번 행을 삭제하시겠습니까?")
                 if st.button("🔴 삭제 실행", key="inc_real_d"):
                     df_income = df_income.drop(df_income.index[st.session_state.edit_idx_inc])
-                    if save_to_drive(FILE_ID, overwrite_sheet(raw_excel, '헌금수입', df_income)): st.session_state.mode_inc = None; st.rerun()
+                    if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '헌금수입', df_income)): st.session_state.mode_inc = None; st.rerun()
                 if st.button("취소"): st.session_state.mode_inc = None; st.rerun()
 
             elif st.session_state.mode_inc == 'edit':
@@ -228,20 +264,19 @@ if df_income is not None:
                     new_b = st.text_input("비고", value=str(curr.get('비고', '')) if pd.notna(curr.get('비고')) else "")
                     
                     if st.form_submit_button("✅ 수정 완료"):
-                        # 값 덮어쓰기 에러(ValueError)를 차단하는 .loc 방식
                         idx = df_income.index[st.session_state.edit_idx_inc]
                         df_income.loc[idx, '날짜'] = new_d.strftime("%Y-%m-%d")
                         df_income.loc[idx, '년월'] = new_d.strftime("%Y%m")
                         df_income.loc[idx, '성명'] = new_n
                         df_income.loc[idx, '금액'] = new_a
                         df_income.loc[idx, '비고'] = new_b
-                        if save_to_drive(FILE_ID, overwrite_sheet(raw_excel, '헌금수입', df_income)):
+                        if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '헌금수입', df_income)):
                             st.session_state.mode_inc = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_inc = None; st.rerun()
 
         with tab2: # 지출
             if st.session_state.mode_exp is None:
-                st.write("🔹 지출 내역")
+                st.write("🔹 지출 내역 (3행 기준 정확히 로드됨)")
                 df_exp_view = df_expense.copy()
                 if '날짜' in df_exp_view.columns: df_exp_view['날짜'] = df_exp_view['날짜'].apply(format_date_str)
                 if '금액' in df_exp_view.columns: df_exp_view['금액'] = pd.to_numeric(df_exp_view['금액'], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
@@ -260,6 +295,7 @@ if df_income is not None:
                     amt = st.number_input("금액", min_value=0, step=1000)
                     note = st.text_input("비고")
                     if st.form_submit_button("저장"):
+                        # '년월'을 여기서 생성하여 기록합니다.
                         row_dict = {'날짜': d.strftime("%Y-%m-%d"), '년월': d.strftime("%Y%m"), '내역': item, '금액': amt, '비고': note}
                         if save_to_drive(FILE_ID, append_dict_to_excel(raw_excel, '지출', row_dict)):
                             st.session_state.mode_exp = None; st.rerun()
@@ -269,7 +305,7 @@ if df_income is not None:
                 st.warning(f"⚠️ 지출 {st.session_state.edit_idx_exp}번 삭제 확인")
                 if st.button("🔴 삭제 실행", key="exp_real_d"):
                     df_expense = df_expense.drop(df_expense.index[st.session_state.edit_idx_exp])
-                    if save_to_drive(FILE_ID, overwrite_sheet(raw_excel, '지출', df_expense)): st.session_state.mode_exp = None; st.rerun()
+                    if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '지출', df_expense)): st.session_state.mode_exp = None; st.rerun()
                 if st.button("취소"): st.session_state.mode_exp = None; st.rerun()
 
             elif st.session_state.mode_exp == 'edit':
@@ -283,11 +319,11 @@ if df_income is not None:
                     if st.form_submit_button("✅ 수정 완료"):
                         idx = df_expense.index[st.session_state.edit_idx_exp]
                         df_expense.loc[idx, '날짜'] = new_d.strftime("%Y-%m-%d")
-                        df_expense.loc[idx, '년월'] = new_d.strftime("%Y%m")
+                        df_expense.loc[idx, '년월'] = new_d.strftime("%Y%m") # 년월 동시 업데이트
                         df_expense.loc[idx, '내역'] = new_i
                         df_expense.loc[idx, '금액'] = new_a
                         df_expense.loc[idx, '비고'] = new_b
-                        if save_to_drive(FILE_ID, overwrite_sheet(raw_excel, '지출', df_expense)):
+                        if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '지출', df_expense)):
                             st.session_state.mode_exp = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_exp = None; st.rerun()
 
@@ -319,7 +355,7 @@ if df_income is not None:
                 st.warning("⚠️ 선택한 성도 정보를 삭제하시겠습니까?")
                 if st.button("🔴 삭제 실행", key="tgt_real_d"):
                     df_target = df_target.drop(df_target.index[st.session_state.edit_idx_tgt])
-                    if save_to_drive(FILE_ID, overwrite_sheet(raw_excel, '작정액', df_target)): st.session_state.mode_tgt = None; st.rerun()
+                    if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '작정액', df_target)): st.session_state.mode_tgt = None; st.rerun()
                 if st.button("취소"): st.session_state.mode_tgt = None; st.rerun()
 
             elif st.session_state.mode_tgt == 'edit':
@@ -334,12 +370,11 @@ if df_income is not None:
                         df_target.loc[idx, '성명'] = n
                         df_target.loc[idx, '직분'] = p
                         df_target.loc[idx, '작정액'] = a
-                        if save_to_drive(FILE_ID, overwrite_sheet(raw_excel, '작정액', df_target)):
+                        if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '작정액', df_target)):
                             st.session_state.mode_tgt = None; st.rerun()
                     if st.form_submit_button("취소"): st.session_state.mode_tgt = None; st.rerun()
 
     elif menu == "📊 결산 및 통계":
-        # 결산액도 '금액'이라는 이름표를 찾아서 정확히 더합니다.
         t_inc = pd.to_numeric(df_income['금액'], errors='coerce').sum() if '금액' in df_income.columns else 0
         t_exp = pd.to_numeric(df_expense['금액'], errors='coerce').sum() if '금액' in df_expense.columns else 0
         st.subheader("📊 전체 요약")
