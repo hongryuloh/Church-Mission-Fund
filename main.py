@@ -54,7 +54,6 @@ def load_data(file_id):
             except: 
                 return pd.DataFrame(columns=default_cols).astype(object)
 
-        # [핵심] '년월'이 비어있으면(None), '날짜'를 읽어서 'YYYYMM'으로 자동 채워주는 함수
         def auto_fill_ym(df):
             if not df.empty and '날짜' in df.columns and '년월' in df.columns:
                 for idx, row in df.iterrows():
@@ -225,16 +224,16 @@ if df_income is not None:
     elif menu == "✍️ 데이터 관리":
         tab1, tab2, tab3 = st.tabs(["💰 헌금 수입", "📉 지출 내역", "👤 작정액 관리"])
         
-        with tab1:
+        with tab1: # 헌금 수입
             if st.session_state.mode_inc is None:
                 st.write("🔹 최근 헌금 수입")
                 df_view = df_income.copy()
                 if '날짜' in df_view.columns: df_view['날짜'] = df_view['날짜'].apply(format_date_str)
-                # 화면에서 None이나 .0이 안 보이게 깔끔하게 처리
-                if '년월' in df_view.columns: df_view['년월'] = df_view['년월'].astype(str).str.replace(r'\.0$', '', regex=True).replace(['nan', 'None', '<NA>'], '')
                 if '금액' in df_view.columns: df_view['금액'] = pd.to_numeric(df_view['금액'], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
                 if '성명' in df_view.columns: df_view = df_view.dropna(subset=['성명'])
-                disp_cols = [c for c in df_view.columns if not str(c).startswith('Unnamed')]
+                
+                # [핵심] 화면에 보여줄 때 '년월'과 'Unnamed' 열을 제외합니다.
+                disp_cols = [c for c in df_view.columns if not str(c).startswith('Unnamed') and str(c) != '년월']
                 st.dataframe(df_view[disp_cols], use_container_width=True)
                 
                 c1, c2, c3, c4 = st.columns([2,1,1,1])
@@ -288,10 +287,10 @@ if df_income is not None:
                 st.write("🔹 지출 내역")
                 df_exp_view = df_expense.copy()
                 if '날짜' in df_exp_view.columns: df_exp_view['날짜'] = df_exp_view['날짜'].apply(format_date_str)
-                # 화면에서 None이나 .0이 안 보이게 깔끔하게 처리
-                if '년월' in df_exp_view.columns: df_exp_view['년월'] = df_exp_view['년월'].astype(str).str.replace(r'\.0$', '', regex=True).replace(['nan', 'None', '<NA>'], '')
                 if '금액' in df_exp_view.columns: df_exp_view['금액'] = pd.to_numeric(df_exp_view['금액'], errors='coerce').fillna(0).apply(lambda x: f"{int(x):,} 원")
-                disp_cols = [c for c in df_exp_view.columns if not str(c).startswith('Unnamed')]
+                
+                # [핵심] 화면에 보여줄 때 '년월'과 'Unnamed' 열을 제외합니다.
+                disp_cols = [c for c in df_exp_view.columns if not str(c).startswith('Unnamed') and str(c) != '년월']
                 st.dataframe(df_exp_view[disp_cols], use_container_width=True)
                 
                 c1, c2, c3, c4 = st.columns([2,1,1,1])
