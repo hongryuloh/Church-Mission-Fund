@@ -415,7 +415,7 @@ if df_income is not None:
                     
             elif st.session_state.mode_inc == 'add':
                 with st.form("inc_add"):
-                    d, amt = st.date_input("입금일자"), st.number_input("금액", min_value=0, step=1000)
+                    d, amt = st.date_input("입금일자"), st.number_input("금액", min_value=0, step=10000)
                     opts = [f"{r[t_n]} ({r[t_p]})" if pd.notna(r.get(t_p)) else str(r.get(t_n)) for _, r in df_target.iterrows() if pd.notna(r.get(t_n)) and r.get(t_n)!='합계']
                     sel, note = st.selectbox("이름 선택", opts), st.text_input("비고")
                     if st.form_submit_button("저장"):
@@ -426,7 +426,7 @@ if df_income is not None:
                 curr = df_income.iloc[st.session_state.edit_idx_inc]
                 with st.form("inc_edit"):
                     new_d = st.date_input("날짜", value=pd.to_datetime(curr.get('날짜', datetime.now())) if pd.notna(curr.get('날짜')) else datetime.now())
-                    new_n, new_a, new_b = st.text_input("이름", value=str(curr.get(i_n, ''))), st.number_input("금액", value=int(pd.to_numeric(curr.get(i_a, 0), errors='coerce') or 0), step=1000), st.text_input("비고", value=str(curr.get('비고', '')) if pd.notna(curr.get('비고')) else "")
+                    new_n, new_a, new_b = st.text_input("이름", value=str(curr.get(i_n, ''))), st.number_input("금액", value=int(pd.to_numeric(curr.get(i_a, 0), errors='coerce') or 0), step=10000), st.text_input("비고", value=str(curr.get('비고', '')) if pd.notna(curr.get('비고')) else "")
                     if st.form_submit_button("✅ 수정 완료"):
                         df_income.loc[df_income.index[st.session_state.edit_idx_inc], ['날짜', i_y, i_n, i_a, '비고']] = [new_d.strftime("%Y-%m-%d"), new_d.strftime("%Y%m"), new_n, new_a, new_b]
                         if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '헌금수입', df_income)): st.session_state.mode_inc = None; st.rerun()
@@ -462,7 +462,7 @@ if df_income is not None:
 
             elif st.session_state.mode_exp == 'add':
                 with st.form("exp_add"):
-                    d, item, amt, note = st.date_input("지출일자"), st.text_input("지출항목"), st.number_input("금액", min_value=0, step=1000), st.text_input("비고")
+                    d, item, amt, note = st.date_input("지출일자"), st.text_input("지출항목"), st.number_input("금액", min_value=0, step=10000), st.text_input("비고")
                     if st.form_submit_button("저장"):
                         if save_to_drive(FILE_ID, append_dict_to_excel(raw_excel, '지출', {'날짜': d.strftime("%Y-%m-%d"), '년월': d.strftime("%Y%m"), '내역': item, '금액': amt, '비고': note})):
                             st.session_state.mode_exp = None; st.rerun()
@@ -471,7 +471,7 @@ if df_income is not None:
                 curr = df_expense.iloc[st.session_state.edit_idx_exp]
                 with st.form("exp_edit"):
                     new_d = st.date_input("날짜", value=pd.to_datetime(curr.get('날짜', datetime.now())) if pd.notna(curr.get('날짜')) else datetime.now())
-                    new_i, new_a, new_b = st.text_input("내역", value=str(curr.get('내역', ''))), st.number_input("금액", value=int(pd.to_numeric(curr.get('금액', 0), errors='coerce') or 0), step=1000), st.text_input("비고", value=str(curr.get('비고', '')) if pd.notna(curr.get('비고')) else "")
+                    new_i, new_a, new_b = st.text_input("내역", value=str(curr.get('내역', ''))), st.number_input("금액", value=int(pd.to_numeric(curr.get('금액', 0), errors='coerce') or 0), step=10000), st.text_input("비고", value=str(curr.get('비고', '')) if pd.notna(curr.get('비고')) else "")
                     if st.form_submit_button("✅ 수정 완료"):
                         df_expense.loc[df_expense.index[st.session_state.edit_idx_exp], ['날짜', '년월', '내역', '금액', '비고']] = [new_d.strftime("%Y-%m-%d"), new_d.strftime("%Y%m"), new_i, new_a, new_b]
                         if save_to_drive(FILE_ID, overwrite_sheet_preserve(raw_excel, '지출', df_expense)): st.session_state.mode_exp = None; st.rerun()
@@ -511,7 +511,7 @@ if df_income is not None:
 
             elif st.session_state.mode_tgt == 'add':
                 with st.form("tgt_add"):
-                    n, p, a = st.text_input("이름"), st.text_input("직분"), st.number_input("월별 작정액", min_value=0, step=1000)
+                    n, p, a = st.text_input("이름"), st.text_input("직분"), st.number_input("월별 작정액", min_value=0, step=10000)
                     if st.form_submit_button("저장"):
                         if save_to_drive(FILE_ID, append_dict_to_excel(raw_excel, '작정액', {t_n: n, t_p: p, t_a: a, '인쇄여부': 'N'})):
                             st.session_state.mode_tgt = None; st.rerun()
