@@ -78,7 +78,7 @@ def load_data(year):
     df_exp = conn.query("SELECT * FROM expense ORDER BY date DESC, id DESC;", ttl=0)
     df_exp = df_exp.rename(columns={'date': '날짜', 'year_month': '년월', 'item': '내역', 'amount': '금액', 'note': '비고'})
     
-    df_tgt = conn.query(f"SELECT * FROM target WHERE target_year={year} ORDER BY name ASC;", ttl=0)
+    df_tgt = conn.query(f"SELECT * FROM target WHERE target_year={year} ORDER BY id ASC;", ttl=0)
     df_tgt = df_tgt.rename(columns={'name': '이름', 'role': '직분', 'monthly_amount': '월별 작정액', 'print_yn': '인쇄여부'})
     
     df_cat = conn.query(f"SELECT * FROM expense_category WHERE target_year={year} ORDER BY item_name ASC;", ttl=0)
