@@ -214,7 +214,7 @@ if menu == "⚙️ 시스템 설정":
     tab_y, tab_c = st.tabs(["🗓️ 연도 설정", "📋 지출항목 관리"])
     
     with tab_y:
-        st.subheader("기준 연도 설정 (TARGET YEAR)")
+        st.subheader("기준연도(TARGET YEAR)")
         with st.form("year_setting_form"):
             new_year = st.number_input("목표 연도 입력", value=TARGET_YEAR, step=1)
             if st.form_submit_button("연도 변경 저장", use_container_width=True):
