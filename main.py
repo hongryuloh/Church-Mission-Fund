@@ -8,99 +8,45 @@ from openpyxl.utils import get_column_letter
 from datetime import datetime
 from sqlalchemy import text
 
-# ==========================================
-# [중요] 매년 이 숫자만 변경하면 됩니다.
-TARGET_YEAR = 2026 
-# ==========================================
+# --- 1. 앱 기본 설정 및 CSS ---
+st.set_page_config(page_title="선교헌금 관리", layout="wide", initial_sidebar_state="auto")
 
-# --- 1. 앱 기본 설정 및 모바일/사파리 극강 최적화 CSS ---
-st.set_page_config(
-    page_title=f"{TARGET_YEAR} 선교헌금 관리", 
-    layout="wide", 
-    initial_sidebar_state="auto"
-)
-
-st.markdown(f"""
+st.markdown("""
     <style>
-    /* 1. 상단 여백 및 헤더 레이아웃 */
-    .block-container {{ padding-top: 2rem !important; padding-bottom: 5rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }}
-    #MainMenu {{ visibility: hidden; display: none !important; }}
-    header {{ background-color: rgba(0,0,0,0) !important; }}
-
-    /* 로그인 화면 제목 최적화 (한 줄 표시) */
-    h1 {{
-        font-size: 1.7rem !important; 
-        white-space: nowrap !important; 
-        text-align: center !important;
-        margin-bottom: 1rem !important;
-        letter-spacing: -1px;
-    }}
-
-    /* 2. 왼쪽 상단 사이드바 버튼 강조 (빨간색 원형) */
-    div[data-testid="stSidebarCollapsedControl"] button {{
-        background-color: #ff4b4b !important;
-        color: white !important;
-        border-radius: 50% !important;
-        width: 48px !important;
-        height: 48px !important;
-        position: fixed !important;
-        top: 15px !important;
-        left: 15px !important;
-        z-index: 999999 !important;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
-        border: 2px solid white !important;
-    }}
-    
-    div[data-testid="stSidebarCollapsedControl"] button svg {{
-        fill: white !important;
-        width: 26px !important;
-        height: 26px !important;
-    }}
-
-    /* 3. 모바일 하단 버튼 가로 배치 */
-    div[data-testid="stHorizontalBlock"] {{
-        display: flex !important;
-        flex-direction: row !important;
-        flex-wrap: nowrap !important;
-        align-items: flex-end !important;
-        gap: 5px !important;
-    }}
-    div[data-testid="stHorizontalBlock"] > div {{
-        flex: 1 1 auto !important;
-        min-width: 0 !important;
-    }}
-    
-    /* 4. 하단 고정 바 (Footer) */
-    .fixed-footer {{
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        background-color: white;
-        padding: 10px 15px 30px 15px;
-        border-top: 1px solid #ddd;
-        z-index: 999;
-    }}
-    @media (prefers-color-scheme: dark) {{
-        .fixed-footer {{ background-color: #1e1e1e !important; border-top: 1px solid #333 !important; }}
-    }}
-    
-    .stButton button {{ width: 100% !important; padding: 0px !important; font-size: 13px !important; height: 42px !important; }}
-    .stNumberInput input {{ height: 42px !important; }}
-    
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {{
-        font-size: 16px !important;
-        font-weight: 600 !important;
-        padding: 10px 0px !important;
-    }}
+    .block-container { padding-top: 2rem !important; padding-bottom: 5rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
+    #MainMenu { visibility: hidden; display: none !important; }
+    header { background-color: rgba(0,0,0,0) !important; }
+    h1 { font-size: 1.7rem !important; white-space: nowrap !important; text-align: center !important; margin-bottom: 1rem !important; letter-spacing: -1px; }
+    div[data-testid="stSidebarCollapsedControl"] button { background-color: #ff4b4b !important; color: white !important; border-radius: 50% !important; width: 48px !important; height: 48px !important; position: fixed !important; top: 15px !important; left: 15px !important; z-index: 999999 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important; border: 2px solid white !important; }
+    div[data-testid="stSidebarCollapsedControl"] button svg { fill: white !important; width: 26px !important; height: 26px !important; }
+    div[data-testid="stHorizontalBlock"] { display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important; align-items: flex-end !important; gap: 5px !important; }
+    div[data-testid="stHorizontalBlock"] > div { flex: 1 1 auto !important; min-width: 0 !important; }
+    .fixed-footer { position: fixed; bottom: 0; left: 0; width: 100%; background-color: white; padding: 10px 15px 30px 15px; border-top: 1px solid #ddd; z-index: 999; }
+    @media (prefers-color-scheme: dark) { .fixed-footer { background-color: #1e1e1e !important; border-top: 1px solid #333 !important; } }
+    .stButton button { width: 100% !important; padding: 0px !important; font-size: 13px !important; height: 42px !important; }
+    .stNumberInput input { height: 42px !important; }
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label { font-size: 16px !important; font-weight: 600 !important; padding: 10px 0px !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# (1) 세션 상태 초기화
 if "authenticated" not in st.session_state: st.session_state["authenticated"] = False
 if "current_user" not in st.session_state: st.session_state["current_user"] = ""
 
-# (2) 로그인 화면 구성
+# --- 2. DB 연결 및 초고속 캐싱 시스템 적용 ---
+conn = st.connection("postgresql", type="sql")
+
+# DB에서 타겟 연도 가져오기 (메모리에 캐싱하여 속도 극대화)
+@st.cache_data(ttl=600)
+def get_target_year():
+    try:
+        res = conn.query("SELECT setting_value FROM settings WHERE setting_key='TARGET_YEAR'", ttl=0)
+        if not res.empty: return int(res.iloc[0]['setting_value'])
+    except: pass
+    return 2026
+
+TARGET_YEAR = get_target_year()
+
+# 로그인 화면
 if not st.session_state["authenticated"]:
     col1, col2, col3 = st.columns([0.1, 3, 0.1]) 
     with col2:
@@ -111,49 +57,46 @@ if not st.session_state["authenticated"]:
             input_pwd = st.text_input("비밀번호 (Password)", type="password")
             if st.form_submit_button("로그인", use_container_width=True):
                 credentials = st.secrets.get("credentials", {})
-                if input_id in credentials and credentials[input_id] == input_pwd:
-                    st.session_state["authenticated"] = True
-                    st.session_state["current_user"] = input_id
-                    st.rerun() 
-                else:
-                    st.error("❌ 정보가 올바르지 않습니다.")
+                if input_id in credentials and str(credentials[input_id]) == input_pwd:
+                    st.session_state["authenticated"] = True; st.session_state["current_user"] = input_id; st.rerun() 
+                else: st.error("❌ 정보가 올바르지 않습니다.")
     st.stop() 
 
-# 사이드바 구성
 with st.sidebar:
     st.title(f"⛪ {TARGET_YEAR} 선교헌금")
     st.write(f"👤 **{st.session_state['current_user']}**님")
     if st.button("로그아웃", use_container_width=True):
-        st.session_state["authenticated"] = False; st.session_state["current_user"] = ""
-        st.rerun()
+        st.session_state["authenticated"] = False; st.session_state["current_user"] = ""; st.rerun()
     st.markdown("---") 
 
-# --- 2. DB 연결 및 헬퍼 함수 ---
-conn = st.connection("postgresql", type="sql")
-
-def load_data():
-    # DB 데이터를 가져와 기존 엑셀 코드와 호환되도록 한글 컬럼명으로 변경
+# 🚀 데이터를 메모리에 저장해두고 꺼내쓰는 초고속 로딩 함수
+@st.cache_data(ttl=600)
+def load_data(year):
     df_inc = conn.query("SELECT * FROM income ORDER BY date DESC, id DESC;", ttl=0)
     df_inc = df_inc.rename(columns={'date': '날짜', 'year_month': '년월', 'name': '이름', 'amount': '금액', 'note': '비고'})
     
     df_exp = conn.query("SELECT * FROM expense ORDER BY date DESC, id DESC;", ttl=0)
     df_exp = df_exp.rename(columns={'date': '날짜', 'year_month': '년월', 'item': '내역', 'amount': '금액', 'note': '비고'})
     
-    df_tgt = conn.query("SELECT * FROM target ORDER BY name ASC;", ttl=0)
+    # 💡 작정액은 설정된 TARGET_YEAR에 해당하는 성도만 가져옴
+    df_tgt = conn.query(f"SELECT * FROM target WHERE target_year={year} ORDER BY name ASC;", ttl=0)
     df_tgt = df_tgt.rename(columns={'name': '이름', 'role': '직분', 'monthly_amount': '월별 작정액', 'print_yn': '인쇄여부'})
     
-    return df_inc, df_tgt, df_exp
+    df_cat = conn.query(f"SELECT * FROM expense_category WHERE target_year={year} ORDER BY item_name ASC;", ttl=0)
+    
+    return df_inc, df_tgt, df_exp, df_cat
+
+# DB에 데이터가 변경될 때 캐시를 초기화하는 함수
+def clear_db_cache(): st.cache_data.clear()
 
 def format_date_str(x):
     if pd.isna(x): return ""
     if isinstance(x, pd.Timestamp) or hasattr(x, 'strftime'): return x.strftime('%Y-%m-%d')
     return str(x)
 
-def fmt(val):
-    if pd.isna(val) or val == 0: return "-"
-    return f"{int(val):,}"
+def fmt(val): return "-" if pd.isna(val) or val == 0 else f"{int(val):,}"
 
-# --- 3. 데이터 계산 함수 (기존 로직 100% 유지) ---
+# --- 3. 데이터 계산 함수 ---
 def calculate_details(user_name, df_income, df_target, start_year=TARGET_YEAR):
     user_info = df_target[df_target['이름'].astype(str).str.strip() == user_name.strip()]
     if user_info.empty: return None
@@ -187,7 +130,7 @@ def calculate_details(user_name, df_income, df_target, start_year=TARGET_YEAR):
             except: pass 
     return {"name": user_name, "commit": commit, "alloc": alloc[1:], "labs": lab[1:], "total": total_donated}
 
-# --- 4. 인쇄 포맷 (기존 로직 100% 유지) ---
+# --- 4. 인쇄 포맷 ---
 def generate_summary_excel(df_income, df_target, target_month, start_year=TARGET_YEAR):
     wb = openpyxl.Workbook(); ws = wb.active; ws.title = "개인별 헌금내역"
     for c in range(1, 19): ws.column_dimensions[get_column_letter(c)].width = 8.13
@@ -252,20 +195,63 @@ def generate_summary_excel(df_income, df_target, target_month, start_year=TARGET
 for k in ['edit_idx_inc', 'edit_idx_exp', 'edit_idx_tgt', 'mode_inc', 'mode_exp', 'mode_tgt']:
     if k not in st.session_state: st.session_state[k] = None
 
-df_income, df_target, df_expense = load_data()
+df_income, df_target, df_expense, df_cat = load_data(TARGET_YEAR)
 
-# 메뉴 권한 설정
+# 메뉴 권한 설정 (관리자는 '시스템 설정' 메뉴 추가)
 user_id = st.session_state["current_user"]
 if user_id == "admin":
-    menu_options = ["✍️ 데이터 관리", "📊 결산/주단위집계", "🔍 개인별 조회", "🖨️ 인쇄용 집계표"]
+    menu_options = ["✍️ 데이터 관리", "📊 결산/주단위집계", "🔍 개인별 조회", "🖨️ 인쇄용 집계표", "⚙️ 시스템 설정"]
 elif user_id == "mission01":
     menu_options = ["✍️ 데이터 관리", "📊 결산/주단위집계", "🔍 개인별 조회"]
 else:
     menu_options = ["📊 결산/주단위집계"]
 menu = st.sidebar.radio("메뉴 선택", menu_options)
 
+# 0. 시스템 설정 (새 기능: 연도 및 지출항목 관리)
+if menu == "⚙️ 시스템 설정":
+    st.header("⚙️ 시스템 환경 및 항목 관리")
+    st.info("💡 여기서 연도를 변경하면 해당 연도의 작정액과 지출항목 데이터를 자동으로 불러옵니다.")
+    
+    tab_y, tab_c = st.tabs(["🗓️ 연도 설정", "📋 지출항목 관리"])
+    
+    with tab_y:
+        st.subheader("기준 연도 설정 (TARGET YEAR)")
+        with st.form("year_setting_form"):
+            new_year = st.number_input("목표 연도 입력", value=TARGET_YEAR, step=1)
+            if st.form_submit_button("연도 변경 저장", use_container_width=True):
+                with conn.session as s:
+                    s.execute(text("UPDATE settings SET setting_value=:y WHERE setting_key='TARGET_YEAR'"), {"y": str(new_year)})
+                    s.commit()
+                clear_db_cache(); st.success(f"✅ {new_year}년으로 변경되었습니다!"); st.rerun()
+
+    with tab_c:
+        st.subheader(f"[{TARGET_YEAR}년] 지출 항목 관리")
+        df_cat_view = df_cat[['id', 'item_name']].rename(columns={'id': 'ID', 'item_name': '지출항목명'})
+        st.dataframe(df_cat_view, use_container_width=True, hide_index=True)
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            with st.form("cat_add_form"):
+                new_cat = st.text_input("➕ 새 지출항목 추가")
+                if st.form_submit_button("항목 저장", use_container_width=True):
+                    if new_cat:
+                        try:
+                            with conn.session as s:
+                                s.execute(text("INSERT INTO expense_category (target_year, item_name) VALUES (:y, :n)"), {"y": TARGET_YEAR, "n": new_cat.strip()})
+                                s.commit()
+                            clear_db_cache(); st.rerun()
+                        except Exception: st.error("이미 존재하는 항목입니다.")
+        with c2:
+            with st.form("cat_del_form"):
+                del_id = st.number_input("🗑️ 삭제할 항목 ID", min_value=0, step=1)
+                if st.form_submit_button("항목 삭제", use_container_width=True):
+                    with conn.session as s:
+                        s.execute(text("DELETE FROM expense_category WHERE id=:id"), {"id": del_id})
+                        s.commit()
+                    clear_db_cache(); st.rerun()
+
 # 1. 데이터 관리
-if menu == "✍️ 데이터 관리":
+elif menu == "✍️ 데이터 관리":
     tab1, tab2, tab3 = st.tabs(["💰 헌금 수입", "📉 지출 내역", "👤 작정액 관리"])
     
     with tab1: 
@@ -280,30 +266,31 @@ if menu == "✍️ 데이터 관리":
                 with bc1: 
                     if st.button("➕신규", key="inc_new", use_container_width=True): st.session_state.mode_inc = 'add'; st.rerun()
                 with bc2: 
-                    idx = st.number_input("ID", min_value=0, step=1, key="inc_idx_in", label_visibility="collapsed", help="수정/삭제할 고유 ID 입력")
+                    idx = st.number_input("ID", min_value=0, step=1, key="inc_idx_in", label_visibility="collapsed")
                 with bc3: 
                     if st.button("📝수정", key="inc_edit", use_container_width=True): 
                         if not df_income[df_income['id'] == idx].empty: st.session_state.edit_idx_inc, st.session_state.mode_inc = idx, 'edit'; st.rerun()
-                        else: st.error("해당 ID가 없습니다.")
+                        else: st.error("ID 없음")
                 with bc4: 
                     if st.button("🗑️삭제", key="inc_del", use_container_width=True): 
                         if not df_income[df_income['id'] == idx].empty: st.session_state.edit_idx_inc, st.session_state.mode_inc = idx, 'delete_check'; st.rerun()
-                        else: st.error("해당 ID가 없습니다.")
+                        else: st.error("ID 없음")
                 st.markdown('</div>', unsafe_allow_html=True)
                 
         elif st.session_state.mode_inc == 'add':
             with st.form("inc_add"):
                 d = st.date_input("입금일자")
                 opts = [f"{r['이름']} ({r['직분']})" if pd.notna(r.get('직분')) else str(r.get('이름')) for _, r in df_target.iterrows() if pd.notna(r.get('이름'))]
-                sel = st.selectbox("이름 선택", opts)
+                sel = st.selectbox("이름 선택", opts) if opts else st.selectbox("이름 선택", ["등록된 성도가 없습니다"])
                 amt = st.number_input("금액", min_value=0, step=10000)
                 note = st.text_input("비고")
                 if st.form_submit_button("저장"):
-                    with conn.session as s:
-                        s.execute(text("INSERT INTO income (date, year_month, name, amount, note) VALUES (:d, :ym, :n, :a, :nt)"),
-                                  {"d": d, "ym": d.strftime("%Y%m"), "n": sel.split(" (")[0], "a": amt, "nt": note})
-                        s.commit()
-                    st.session_state.mode_inc = None; st.rerun()
+                    if opts:
+                        with conn.session as s:
+                            s.execute(text("INSERT INTO income (date, year_month, name, amount, note) VALUES (:d, :ym, :n, :a, :nt)"),
+                                      {"d": d, "ym": d.strftime("%Y%m"), "n": sel.split(" (")[0], "a": amt, "nt": note})
+                            s.commit()
+                        clear_db_cache(); st.session_state.mode_inc = None; st.rerun()
                 if st.form_submit_button("취소"): st.session_state.mode_inc = None; st.rerun()
                 
         elif st.session_state.mode_inc == 'edit':
@@ -318,7 +305,7 @@ if menu == "✍️ 데이터 관리":
                         s.execute(text("UPDATE income SET date=:d, year_month=:ym, name=:n, amount=:a, note=:nt WHERE id=:id"),
                                   {"d": new_d, "ym": new_d.strftime("%Y%m"), "n": new_n, "a": new_a, "nt": new_b, "id": st.session_state.edit_idx_inc})
                         s.commit()
-                    st.session_state.mode_inc = None; st.rerun()
+                    clear_db_cache(); st.session_state.mode_inc = None; st.rerun()
                 if st.form_submit_button("취소"): st.session_state.mode_inc = None; st.rerun()
                 
         elif st.session_state.mode_inc == 'delete_check':
@@ -327,7 +314,7 @@ if menu == "✍️ 데이터 관리":
                 with conn.session as s:
                     s.execute(text("DELETE FROM income WHERE id=:id"), {"id": st.session_state.edit_idx_inc})
                     s.commit()
-                st.session_state.mode_inc = None; st.rerun()
+                clear_db_cache(); st.session_state.mode_inc = None; st.rerun()
             if st.button("취소", use_container_width=True): st.session_state.mode_inc = None; st.rerun()
 
     with tab2:
@@ -354,21 +341,19 @@ if menu == "✍️ 데이터 관리":
         elif st.session_state.mode_exp == 'add':
             with st.form("exp_add"):
                 d = st.date_input("지출일자")
-                existing_items = sorted(list(set([str(x).strip() for x in df_expense.get('내역', []) if pd.notna(x) and str(x).strip()])))
-                exp_opts = existing_items + ["➕ 직접 입력 (아래 빈칸에 작성)"]
-                sel_item = st.selectbox("지출항목 선택", exp_opts)
-                custom_item = st.text_input("새 지출항목 (위에서 '직접 입력' 선택 시)")
+                # 💡 관리자가 지정한 지출항목 리스트만 가져오도록 깔끔하게 변경
+                cat_list = df_cat['item_name'].tolist() if not df_cat.empty else ["등록된 항목이 없습니다"]
+                sel_item = st.selectbox("지출항목 선택", cat_list)
                 amt = st.number_input("금액", min_value=0, step=10000)
                 note = st.text_input("비고")
                 if st.form_submit_button("저장"):
-                    final_item = custom_item.strip() if sel_item.startswith("➕") else sel_item
-                    if not final_item: st.error("지출항목을 기재해 주세요.")
+                    if sel_item == "등록된 항목이 없습니다": st.error("시스템 설정에서 지출항목을 먼저 등록해주세요.")
                     else:
                         with conn.session as s:
                             s.execute(text("INSERT INTO expense (date, year_month, item, amount, note) VALUES (:d, :ym, :i, :a, :nt)"),
-                                      {"d": d, "ym": d.strftime("%Y%m"), "i": final_item, "a": amt, "nt": note})
+                                      {"d": d, "ym": d.strftime("%Y%m"), "i": sel_item, "a": amt, "nt": note})
                             s.commit()
-                        st.session_state.mode_exp = None; st.rerun()
+                        clear_db_cache(); st.session_state.mode_exp = None; st.rerun()
                 if st.form_submit_button("취소"): st.session_state.mode_exp = None; st.rerun()
                 
         elif st.session_state.mode_exp == 'edit':
@@ -376,20 +361,19 @@ if menu == "✍️ 데이터 관리":
             with st.form("exp_edit"):
                 new_d = st.date_input("날짜", value=pd.to_datetime(curr.get('날짜', datetime.now())))
                 curr_item = str(curr.get('내역', '')).strip()
-                existing_items = sorted(list(set([str(x).strip() for x in df_expense.get('내역', []) if pd.notna(x) and str(x).strip()])))
-                exp_opts = existing_items + ["➕ 직접 입력 (아래 빈칸에 작성)"]
-                default_idx = exp_opts.index(curr_item) if curr_item in exp_opts else len(exp_opts)-1
-                sel_item = st.selectbox("지출항목 선택", exp_opts, index=default_idx)
-                custom_item = st.text_input("새 지출항목 (위에서 '직접 입력' 선택 시)", value=curr_item if default_idx == len(exp_opts)-1 else "")
+                cat_list = df_cat['item_name'].tolist() if not df_cat.empty else []
+                if curr_item and curr_item not in cat_list: cat_list.append(curr_item)
+                default_idx = cat_list.index(curr_item) if curr_item in cat_list else 0
+                
+                sel_item = st.selectbox("지출항목 선택", cat_list, index=default_idx)
                 new_a = st.number_input("금액", value=int(pd.to_numeric(curr.get('금액', 0), errors='coerce') or 0), step=10000)
                 new_b = st.text_input("비고", value=str(curr.get('비고', '')) if pd.notna(curr.get('비고')) else "")
                 if st.form_submit_button("✅ 수정 완료"):
-                    final_item = custom_item.strip() if sel_item.startswith("➕") else sel_item
                     with conn.session as s:
                         s.execute(text("UPDATE expense SET date=:d, year_month=:ym, item=:i, amount=:a, note=:nt WHERE id=:id"),
-                                  {"d": new_d, "ym": new_d.strftime("%Y%m"), "i": final_item, "a": new_a, "nt": new_b, "id": st.session_state.edit_idx_exp})
+                                  {"d": new_d, "ym": new_d.strftime("%Y%m"), "i": sel_item, "a": new_a, "nt": new_b, "id": st.session_state.edit_idx_exp})
                         s.commit()
-                    st.session_state.mode_exp = None; st.rerun()
+                    clear_db_cache(); st.session_state.mode_exp = None; st.rerun()
                 if st.form_submit_button("취소"): st.session_state.mode_exp = None; st.rerun()
                 
         elif st.session_state.mode_exp == 'delete_check':
@@ -397,19 +381,16 @@ if menu == "✍️ 데이터 관리":
                 with conn.session as s:
                     s.execute(text("DELETE FROM expense WHERE id=:id"), {"id": st.session_state.edit_idx_exp})
                     s.commit()
-                st.session_state.mode_exp = None; st.rerun()
+                clear_db_cache(); st.session_state.mode_exp = None; st.rerun()
             if st.button("취소", use_container_width=True): st.session_state.mode_exp = None; st.rerun()
 
     with tab3: 
         if st.session_state.mode_tgt is None:
             df_view = df_target.copy()
-            
-            # 💡 [오류 해결] 데이터가 0건일 때 에러 방지를 위해 빈 컬럼을 미리 만들어 둡니다.
             df_view['년간작정금액'] = 0
             df_view['헌금액'] = 0
             df_view['년간작정 잔여금액'] = 0
             
-            # UI 상에서 잔여금액 등 자동 계산
             for idx, row in df_view.iterrows():
                 name = str(row.get('이름')).strip()
                 if not name or name == 'nan' or name == '합계': continue
@@ -446,10 +427,11 @@ if menu == "✍️ 데이터 관리":
                 a = st.number_input("월별 작정액", min_value=0, step=10000)
                 if st.form_submit_button("저장"):
                     with conn.session as s:
-                        s.execute(text("INSERT INTO target (name, role, monthly_amount, print_yn) VALUES (:n, :r, :a, 'N')"),
-                                  {"n": n, "r": p, "a": a})
+                        # 💡 새 성도를 추가할 때 설정된 TARGET_YEAR 도 함께 저장합니다.
+                        s.execute(text("INSERT INTO target (target_year, name, role, monthly_amount, print_yn) VALUES (:y, :n, :r, :a, 'N')"),
+                                  {"y": TARGET_YEAR, "n": n, "r": p, "a": a})
                         s.commit()
-                    st.session_state.mode_tgt = None; st.rerun()
+                    clear_db_cache(); st.session_state.mode_tgt = None; st.rerun()
                 if st.form_submit_button("취소"): st.session_state.mode_tgt = None; st.rerun()
                 
         elif st.session_state.mode_tgt == 'edit':
@@ -468,7 +450,7 @@ if menu == "✍️ 데이터 관리":
                         s.execute(text("UPDATE target SET name=:n, role=:r, monthly_amount=:a WHERE id=:id"),
                                   {"n": n, "r": p, "a": a, "id": st.session_state.edit_idx_tgt})
                         s.commit()
-                    st.session_state.mode_tgt = None; st.rerun()
+                    clear_db_cache(); st.session_state.mode_tgt = None; st.rerun()
                 if st.form_submit_button("취소"): st.session_state.mode_tgt = None; st.rerun()
                 
         elif st.session_state.mode_tgt == 'delete_check':
@@ -476,7 +458,7 @@ if menu == "✍️ 데이터 관리":
                 with conn.session as s:
                     s.execute(text("DELETE FROM target WHERE id=:id"), {"id": st.session_state.edit_idx_tgt})
                     s.commit()
-                st.session_state.mode_tgt = None; st.rerun()
+                clear_db_cache(); st.session_state.mode_tgt = None; st.rerun()
 
 # 2. 결산/주단위집계
 elif menu == "📊 결산/주단위집계":
@@ -565,20 +547,14 @@ elif menu == "🖨️ 인쇄용 집계표":
     if st.button("🔄 인쇄용 파일 생성", use_container_width=True):
         with st.spinner("엑셀 파일을 생성 중입니다..."):
             donors = set(df_income[df_income['년월'] == target_month]['이름'].apply(lambda x: str(x).strip()).unique())
-            
-            # DB에 인쇄 여부 및 계산된 헌금액 일괄 업데이트 (엑셀의 overwrite_sheet_preserve 역할 대체)
             with conn.session as s:
                 for idx, row in df_target.iterrows():
                     name = str(row.get('이름')).strip()
                     if not name or name == 'nan' or name == '합계': continue
                     print_val = 'Y' if name in donors else 'N'
-                    s.execute(text("UPDATE target SET print_yn=:p WHERE name=:n"), {"p": print_val, "n": name})
+                    s.execute(text("UPDATE target SET print_yn=:p WHERE name=:n AND target_year=:y"), {"p": print_val, "n": name, "y": TARGET_YEAR})
                 s.commit()
-            
-            # 업데이트된 데이터 다시 불러오기
-            _, df_target_updated, _ = load_data()
-            
-            # 파일 생성
+            clear_db_cache(); _, df_target_updated, _, _ = load_data(TARGET_YEAR)
             st.session_state.download_data = generate_summary_excel(df_income, df_target_updated, target_month)
             st.success(f"✅ 완성되었습니다!")
             
