@@ -208,7 +208,7 @@ menu = st.sidebar.radio("메뉴 선택", menu_options)
 
 # 0. 시스템 설정
 if menu == "⚙️ 시스템 설정":
-    st.header("⚙️ 시스템 환경 및 항목 관리")
+    st.header("⚙️ 시스템환경")
     st.info("💡 여기서 연도를 변경하면 해당 연도의 작정액과 지출항목 데이터를 자동으로 불러옵니다.")
     
     tab_y, tab_c = st.tabs(["🗓️ 연도 설정", "📋 지출항목 관리"])
