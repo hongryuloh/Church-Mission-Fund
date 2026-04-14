@@ -400,9 +400,15 @@ if menu == "✍️ 데이터 관리":
                 st.session_state.mode_exp = None; st.rerun()
             if st.button("취소", use_container_width=True): st.session_state.mode_exp = None; st.rerun()
 
-    with tab3: 
+	with tab3: 
         if st.session_state.mode_tgt is None:
             df_view = df_target.copy()
+            
+            # 💡 [오류 해결] 데이터가 0건일 때 에러 방지를 위해 빈 컬럼을 미리 만들어 둡니다.
+            df_view['년간작정금액'] = 0
+            df_view['헌금액'] = 0
+            df_view['년간작정 잔여금액'] = 0
+            
             # UI 상에서 잔여금액 등 자동 계산
             for idx, row in df_view.iterrows():
                 name = str(row.get('이름')).strip()
