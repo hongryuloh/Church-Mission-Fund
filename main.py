@@ -235,12 +235,16 @@ if menu == "⚙️ 시스템 설정":
                 new_cat = st.text_input("➕ 새 지출항목 추가")
                 if st.form_submit_button("항목 저장", use_container_width=True):
                     if new_cat:
-                        try:
+                        # 💡 1. 이미 표에 있는 이름인지 먼저 검사합니다.
+                        if new_cat.strip() in df_cat['item_name'].tolist():
+                            st.warning("⚠️ 이미 목록에 존재하는 항목입니다.")
+                        else:
+                            # 💡 2. 목록에 없으면 DB에 안전하게 저장하고 새로고침!
                             with conn.session as s:
                                 s.execute(text("INSERT INTO expense_category (target_year, item_name) VALUES (:y, :n)"), {"y": TARGET_YEAR, "n": new_cat.strip()})
                                 s.commit()
-                            clear_db_cache(); st.rerun()
-                        except Exception: st.error("이미 존재하는 항목입니다.")
+                            clear_db_cache()
+                            st.rerun()
         with c2:
             with st.form("cat_del_form"):
                 del_id = st.number_input("🗑️ 삭제할 항목 ID", min_value=0, step=1)
@@ -248,7 +252,8 @@ if menu == "⚙️ 시스템 설정":
                     with conn.session as s:
                         s.execute(text("DELETE FROM expense_category WHERE id=:id"), {"id": del_id})
                         s.commit()
-                    clear_db_cache(); st.rerun()
+                    clear_db_cache()
+                    st.rerun()
 
 # 1. 데이터 관리
 elif menu == "✍️ 데이터 관리":
