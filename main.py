@@ -400,7 +400,7 @@ if menu == "✍️ 데이터 관리":
                 st.session_state.mode_exp = None; st.rerun()
             if st.button("취소", use_container_width=True): st.session_state.mode_exp = None; st.rerun()
 
-	with tab3: 
+    with tab3: 
         if st.session_state.mode_tgt is None:
             df_view = df_target.copy()
             
